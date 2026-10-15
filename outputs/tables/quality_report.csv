@@ -2,7 +2,6 @@
 rows_raw,44989.0
 duplicate_sessionIDs,0.0
 flag_neg_duration,0.0
-flag_kwh_outlier,1.0
 flag_done_after_disc,3549.0
-rows_clean,44988.0
+rows_clean,44989.0
 pct_with_userinputs,93.06

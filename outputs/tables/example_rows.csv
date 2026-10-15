@@ -21,10 +21,12 @@ ui_modifiedAt,2019-01-01 05:30:01+00:00,,2019-01-01 18:09:19+00:00,,
 ui_paymentRequired,True,,True,,
 ui_requestedDeparture,2019-01-01 06:28:34+00:00,,2019-01-02 02:43:17+00:00,,
 ui_kWhRequested,8.0,,17.76,,
-n_userinput_edits,,,,,
+n_userinput_edits,1,0,1,0,0
 duration_h,0.5772222222222222,0.96,8.504166666666666,0.6566666666666666,0.9205555555555556
-charge_h,0.5755555555555556,0.9766666666666667,2.1147222222222224,0.6727777777777778,0.6708333333333333
 has_userinputs,True,False,True,False,False
+flag_missing_times,False,False,False,False,False
 flag_neg_duration,False,False,False,False,False
+flag_long_duration,False,False,False,False,False
 flag_kwh_outlier,False,False,False,False,False
 flag_done_after_disc,False,True,False,True,False
+flag_stuck_suspect,False,False,False,False,False

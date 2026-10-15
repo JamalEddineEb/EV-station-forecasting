@@ -1,7 +1,4 @@
-site,year,sessions
-caltech,2019,10616
-caltech,2020,2472
-caltech,2021,3038
-jpl,2019,17411
-jpl,2020,5576
-jpl,2021,5875
+year,caltech,jpl
+2019,10616,17411
+2020,2472,5576
+2021,3038,5876
