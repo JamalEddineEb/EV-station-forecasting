@@ -1,0 +1,32 @@
+,0,1,2,3,4
+_id,5c3fda9df9af8b0d99c6fd61,5c412c1df9af8b12cb56c27c,5c412c1df9af8b12cb56c27d,5c412c1df9af8b12cb56c27e,5c412c1df9af8b12cb56c27f
+sessionID,2_39_130_31_2019-01-01 05:28:33.527740,2_39_138_566_2019-01-01 17:41:44.784919,2_39_79_379_2019-01-01 18:09:16.991864,2_39_138_566_2019-01-01 18:39:24.566872,2_39_138_566_2019-01-01 19:18:52.843645
+stationID,2-39-130-31,2-39-138-566,2-39-79-379,2-39-138-566,2-39-138-566
+spaceID,CA-306,CA-512,CA-327,CA-512,CA-512
+siteID,0002,0002,0002,0002,0002
+clusterID,0039,0039,0039,0039,0039
+connectionTime,2019-01-01 05:28:34+00:00,2019-01-01 17:41:45+00:00,2019-01-01 18:09:17+00:00,2019-01-01 18:39:25+00:00,2019-01-01 19:18:53+00:00
+disconnectTime,2019-01-01 06:03:12+00:00,2019-01-01 18:39:21+00:00,2019-01-02 02:39:32+00:00,2019-01-01 19:18:49+00:00,2019-01-01 20:14:07+00:00
+kWhDelivered,3.25,0.9,12.534,0.883,0.879
+doneChargingTime,2019-01-01 06:03:06+00:00,2019-01-01 18:40:21+00:00,2019-01-01 20:16:10+00:00,2019-01-01 19:19:47+00:00,2019-01-01 19:59:08+00:00
+timezone,America/Los_Angeles,America/Los_Angeles,America/Los_Angeles,America/Los_Angeles,America/Los_Angeles
+userID,000001616,,000000558,,
+site,caltech,caltech,caltech,caltech,caltech
+source_file,acn_caltech_2019_01.json,acn_caltech_2019_01.json,acn_caltech_2019_01.json,acn_caltech_2019_01.json,acn_caltech_2019_01.json
+ui_userID,1616.0,,558.0,,
+ui_milesRequested,20.0,,80.0,,
+ui_WhPerMile,400.0,,222.0,,
+ui_minutesAvailable,60.0,,514.0,,
+ui_modifiedAt,2019-01-01 05:30:01+00:00,,2019-01-01 18:09:19+00:00,,
+ui_paymentRequired,True,,True,,
+ui_requestedDeparture,2019-01-01 06:28:34+00:00,,2019-01-02 02:43:17+00:00,,
+ui_kWhRequested,8.0,,17.76,,
+n_userinput_edits,1,0,1,0,0
+duration_h,0.5772222222222222,0.96,8.504166666666666,0.6566666666666666,0.9205555555555556
+has_userinputs,True,False,True,False,False
+flag_missing_times,False,False,False,False,False
+flag_neg_duration,False,False,False,False,False
+flag_long_duration,False,False,False,False,False
+flag_kwh_outlier,False,False,False,False,False
+flag_done_after_disc,False,True,False,True,False
+flag_stuck_suspect,False,False,False,False,False
