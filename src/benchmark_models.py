@@ -2,13 +2,16 @@
 
 Each model runs in its own subprocess, so peak-RSS numbers are not contaminated by
 earlier models. Reuses fit/DLinear/GRUForecast, make_features and the baselines.
+
+    python -m src.benchmark_models --data outputs/caltech_occupancy_data.npz
 """
 import os
 
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
 
 import argparse
 import copy
-import importlib.util
 import io
 import json
 import platform
@@ -101,18 +104,6 @@ def hardware(device):
     return hw
 
 
-def count_flops(model, L, H, C):
-    """Forward FLOPs for one sample via torch's counter (may miss ops such as GRU)."""
-    try:
-        from torch.utils.flop_counter import FlopCounterMode
-
-        with torch.no_grad(), FlopCounterMode(display=False) as fc:
-            model(torch.zeros(1, L, 1), torch.zeros(1, H, C))
-        return fc.get_total_flops()
-    except Exception:
-        return None
-
-
 def analytic_flops(name, L, H, C, hidden):
     """Hand-derived forward FLOPs/sample (2 per multiply-add; ignores activations)."""
     if name == "dlinear":
@@ -191,32 +182,6 @@ def measure(runtimes, d, a):
     return out
 
 
-def build_onnx(model, L, H, C, path, mean, std, threads):
-    import onnx  # noqa: F401
-    import onnxruntime as ort
-
-    kw = dict(
-        input_names=["hist", "cal"],
-        output_names=["y"],
-        dynamic_axes={"hist": {0: "b"}, "cal": {0: "b"}, "y": {0: "b"}},
-        opset_version=17,
-    )
-    args = (torch.zeros(1, L, 1), torch.zeros(1, H, C))
-    try:
-        torch.onnx.export(model, args, path, dynamo=False, **kw)
-    except TypeError:  # older torch without the dynamo kwarg
-        torch.onnx.export(model, args, path, **kw)
-    so = ort.SessionOptions()
-    so.intra_op_num_threads = threads
-    sess = ort.InferenceSession(path, so, providers=["CPUExecutionProvider"])
-
-    def fn(hist, cal):
-        x = ((hist - mean) / std).astype(np.float32)[..., None]
-        return sess.run(None, {"hist": x, "cal": cal.astype(np.float32)})[0] * std + mean
-
-    return fn, os.path.getsize(path)
-
-
 # ---------------------------------------------------------------- workers
 def run_neural(name, a, d, device):
     th, tc, ty = d["train_X_hist"], d["train_X_cal"], d["train_y"]
@@ -250,15 +215,6 @@ def run_neural(name, a, d, device):
         runtimes["cpu_int8"] = (torch_fn(q, torch.device("cpu"), mean, std), nop, False, serialized_bytes(q))
     except Exception as e:  # noqa: BLE001
         errors["cpu_int8"] = repr(e)[:200]
-    if importlib.util.find_spec("onnx") and importlib.util.find_spec("onnxruntime"):
-        try:
-            os.makedirs(a.outdir, exist_ok=True)
-            fn, size = build_onnx(model, L, H, C, os.path.join(a.outdir, name + ".onnx"), mean, std, a.cpu_threads)
-            runtimes["onnx_cpu"] = (fn, nop, False, size)
-        except Exception as e:  # noqa: BLE001
-            errors["onnx_cpu"] = repr(e)[:200]
-    else:
-        errors["onnx_cpu"] = "onnx / onnxruntime not installed"
     if device.type == "cuda":
         gpu = copy.deepcopy(model).to(device).eval()
         runtimes["cuda_fp32"] = (torch_fn(gpu, device, mean, std), lambda: torch.cuda.synchronize(), True, None)
@@ -266,7 +222,6 @@ def run_neural(name, a, d, device):
     return {name: {
         "parameters": sum(p.numel() for p in model.parameters()),
         "disk_mib": serialized_bytes(model) / 2**20,
-        "flops_counter": count_flops(model, L, H, C),
         "flops_analytic": analytic_flops(name, L, H, C, a.hidden),
         "training": training,
         "runtimes": measure(runtimes, d, a),
@@ -293,7 +248,6 @@ def run_ridge(a, d):
     return {"ridge": {
         "parameters": int(model.coef_.size + model.intercept_.size),
         "disk_mib": os.path.getsize(path) / 2**20,
-        "flops_counter": None,
         "flops_analytic": 2 * xt.shape[1] * ty.shape[1],
         "training": {
             "total_s": fit_rec["wall_s"],  # solver only; feature prep reported separately
@@ -313,7 +267,7 @@ def run_baselines(a, d):
     for key, func in (("persistence", persistence), ("seasonal_naive", seasonal_naive)):
         fn = lambda hist, cal, f=func: f(hist, H)  # noqa: E731
         out[key] = {
-            "parameters": 0, "disk_mib": 0.0, "flops_counter": None, "flops_analytic": 0,
+            "parameters": 0, "disk_mib": 0.0, "flops_analytic": 0,
             "training": {"total_s": 0.0}, "errors": {},
             "runtimes": measure({"cpu_numpy": (fn, nop, False, None)}, d, a),
         }
@@ -362,24 +316,22 @@ def render(res):
             st["batch_size"], st["inference_batch_size"], st["iterations"], st["warmup"]),
         "- Versions: Python {}, PyTorch {}, scikit-learn {}.".format(hw["python"], hw["torch"], hw["scikit_learn"]),
         "", "## Training efficiency", "",
-        "| Model | Total fit (s) | Epochs | s/epoch | Samples/s | Peak GPU (MiB) | RSS growth (MiB) | Params | Size (MiB) | GFLOPs/sample (counter / analytic) |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| Model | Total fit (s) | Epochs | s/epoch | Samples/s | Peak GPU (MiB) | RSS growth (MiB) | Params | Size (MiB) | GFLOPs/sample (analytic) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for name, m in res["models"].items():
         t = m["training"]
-        L.append("| {} | {} | {} | {} | {} | {} | {} | {:,} | {:.4f} | {} / {} |".format(
+        L.append("| {} | {} | {} | {} | {} | {} | {} | {:,} | {:.4f} | {:.6f} |".format(
             name, fmt(t.get("total_s"), ".2f"), fmt(t.get("epochs"), "d"), fmt(t.get("s_per_epoch"), ".3f"),
             fmt(t.get("samples_per_s"), ".0f"), fmt(t.get("peak_gpu_mib"), ".1f"),
             fmt(t.get("rss_growth_mib"), ".1f"), m["parameters"], m["disk_mib"],
-            fmt(m["flops_counter"] and m["flops_counter"] / 1e9, ".6f"),
-            fmt(m["flops_analytic"] / 1e9, ".6f")))
+            m["flops_analytic"] / 1e9))
     L += [
         "",
         "Neural fit time includes per-epoch validation and early stopping (first CUDA epoch includes "
         "warmup). Ridge time is the solver only; feature preparation is in the JSON. RSS growth is the "
-        "process peak minus RSS after data loading (each model runs in its own process). FLOPs count 2 per "
-        "multiply-add; the counter column is n/a where torch's FlopCounterMode cannot cover the model, and "
-        "the analytic column ignores activations.",
+        "process peak minus RSS after data loading (each model runs in its own process). FLOPs are hand-derived "
+        "forward-pass estimates (2 per multiply-add, activations ignored).",
         "", "## Inference", "",
         "| Model / runtime | Single p50 (ms) | Single p90 (ms) | Batch | Batch p50 (ms) | Batch p90 (ms) | Samples/s (batch) | RSS (MiB) | GPU peak (+MiB) | Weights (KiB) |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -402,10 +354,9 @@ def render(res):
     L += ["", "## Optimizations attempted", ""]
     for name, m in res["models"].items():
         if name in ("dlinear", "gru"):
-            for rt in ("cpu_int8", "onnx_cpu"):
-                status = "measured" if rt in m["runtimes"] else "failed/skipped: " + m["errors"].get(rt, "unknown")
-                L.append("- {} {}: {}".format(name, rt, status))
-    L += ["- Distillation: not attempted. Energy/cost: not measured (no power telemetry).", "",
+            status = "measured" if "cpu_int8" in m["runtimes"] else "failed: " + m["errors"].get("cpu_int8", "unknown")
+            L.append("- {} dynamic INT8: {}".format(name, status))
+    L += ["- ONNX export and distillation: not attempted. Energy/cost: not measured (no power telemetry).", "",
           "Numbers are specific to this machine and software stack; rerun on the deployment target.", ""]
     return "\n".join(L)
 
