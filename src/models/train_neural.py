@@ -13,6 +13,16 @@ QUANTILES = (0.1, 0.5, 0.9)
 LO, MID, HI = 0, 1, 2
 N_Q = len(QUANTILES)
 
+# Per-window normalization: every input window is divided by its own recent occupancy level, the model
+# works on relative occupancy, and outputs are multiplied back. Intervals therefore scale with the level.
+SCALE_WINDOW = 96  # last day at 15-min resolution
+SCALE_EPS = 0.5    # keeps empty windows from blowing up the division (same unit as occupancy)
+
+
+def window_scale(hist):
+    """Per-window scale, shape (N, 1): mean occupancy over the last SCALE_WINDOW steps + SCALE_EPS."""
+    return hist[:, -SCALE_WINDOW:].mean(axis=1, keepdims=True) + SCALE_EPS
+
 
 class DLinear(nn.Module):
     def __init__(self, seq_len, horizon, cal_dim, kernel=25, n_q=N_Q):
@@ -47,11 +57,12 @@ class PinballLoss(nn.Module):
         err = y.unsqueeze(-1) - pred
         return torch.maximum(self.q*err, (self.q-1)*err).mean()
 
-def make_tensors(hist, cal, y, mean, std):
-    h = torch.from_numpy(((hist-mean)/std).astype(np.float32)).unsqueeze(-1)
+def make_tensors(hist, cal, y):
+    s = window_scale(hist)
+    h = torch.from_numpy((hist/s).astype(np.float32)).unsqueeze(-1)
     c = torch.from_numpy(cal.astype(np.float32))
     if y is None: return h,c
-    return h,c,torch.from_numpy(((y-mean)/std).astype(np.float32))
+    return h,c,torch.from_numpy((y/s).astype(np.float32))
 
 
 @profile("train_epoch")
@@ -95,19 +106,20 @@ def fit(model, loader, val_data, device, epochs, patience, lr, name):
 
 @profile("predict")
 @torch.no_grad()
-def predict(model, data, device, mean, std, batch=512):
-    """Quantile forecasts in original units, shape (N, horizon, 3)."""
+def predict(model, data, device, scale, batch=512):
+    """Quantile forecasts in original units, shape (N, horizon, 3). `scale` = window_scale(history)."""
     model.eval(); h,c=data; out=[]
     for i in range(0,len(h),batch):
         out.append(model(h[i:i+batch].to(device),c[i:i+batch].to(device)).cpu().numpy())
-    return np.concatenate(out)*std+mean
+    return np.concatenate(out)*scale[:, :, None]
 
 
-def save_checkpoint(model, name, outdir, mean, std, meta):
+def save_checkpoint(model, name, outdir, meta):
     """Save everything needed to rebuild the model, so benchmarks never need to retrain."""
     path = os.path.join(outdir, name.lower()+".pt")
     state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
-    torch.save({"name": name, "state_dict": state, "mean": mean, "std": std, "quantiles": QUANTILES, **meta}, path)
+    torch.save({"name": name, "state_dict": state, "quantiles": QUANTILES,
+                "scale_window": SCALE_WINDOW, "scale_eps": SCALE_EPS, **meta}, path)
     return path
 
 
@@ -135,8 +147,7 @@ def main():
         th,tc,ty=d["train_X_hist"],d["train_X_cal"],d["train_y"]
         vh,vc,vy=d["val_X_hist"],d["val_X_cal"],d["val_y"]
         sh,sc,sy=d["test_X_hist"],d["test_X_cal"],d["test_y"]
-    mean=float(th.mean()); std=max(float(th.std()),1e-6)
-    tr=make_tensors(th,tc,ty,mean,std); va=make_tensors(vh,vc,vy,mean,std); te=make_tensors(sh,sc,None,mean,std)
+    tr=make_tensors(th,tc,ty); va=make_tensors(vh,vc,vy); te=make_tensors(sh,sc,None)
     loader=DataLoader(TensorDataset(*tr),batch_size=a.batch_size,shuffle=True,num_workers=0)
     os.makedirs(a.outdir,exist_ok=True)
     L,H,C = th.shape[1], ty.shape[1], tc.shape[2]
@@ -144,13 +155,13 @@ def main():
     for name,model in models:
         profiling.tag(name)
         model=fit(model,loader,va,device,a.epochs,a.patience,a.lr,name)
-        vp=predict(model,(va[0],va[1]),device,mean,std); sp=predict(model,te,device,mean,std)
+        vp=predict(model,(va[0],va[1]),device,window_scale(vh)); sp=predict(model,te,device,window_scale(sh))
         out=os.path.join(a.outdir,name.lower()+"_predictions.npz")
         arrays={}
         for split,q in (("val",vp),("test",sp)):
             arrays.update({split+"_lower":q[...,LO], split+"_pred":q[...,MID], split+"_upper":q[...,HI]})
         np.savez_compressed(out,y_val=vy,y_test=sy,**{k:v.astype(np.float32) for k,v in arrays.items()})
-        ckpt=save_checkpoint(model,name,a.outdir,mean,std,
+        ckpt=save_checkpoint(model,name,a.outdir,
                              {"hidden":a.hidden,"seq_len":L,"horizon":H,"calendar_dim":C})
         profiling.dump(os.path.join(a.metrics_dir,name.lower()+"_train.json"),prefix=name,extra={
             "model":name,"parameters":sum(q.numel() for q in model.parameters()),

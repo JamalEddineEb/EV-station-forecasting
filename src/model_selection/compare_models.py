@@ -47,7 +47,7 @@ def main():
                 s: (data[s + "_lower"], data[s + "_upper"]) if native else (data[s + "_pred"],) * 2
                 for s in ("val", "test")
             }
-        lower, upper = conformalize(y_val, *bounds["val"], *bounds["test"])
+        lower, upper = conformalize(y_val, *bounds["val"], *bounds["test"], val_history, test_history)
         np.savez_compressed(
             os.path.join(args.indir, key + "_intervals.npz"),
             lower=lower.astype(np.float32),

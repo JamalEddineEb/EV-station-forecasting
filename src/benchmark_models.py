@@ -32,7 +32,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from model_selection.baselines import persistence, seasonal_naive
 from model_selection.conformal import conformalize
 from models import profiling
-from models.train_neural import N_Q, DLinear, GRUForecast, fit, make_tensors
+from models.train_neural import N_Q, DLinear, GRUForecast, fit, make_tensors, window_scale
 from models.train_ridge import fit_ridge, make_features, prepare
 
 WORKERS = ("dlinear", "gru", "ridge", "baselines")
@@ -115,13 +115,14 @@ def analytic_flops(name, L, H, C, hidden):
 
 
 # ------------------------------------------------------- inference benchmark
-def torch_fn(model, device, mean, std):
+def torch_fn(model, device):
     def f(hist, cal):
-        x = torch.from_numpy(((hist - mean) / std).astype(np.float32)).unsqueeze(-1).to(device)
+        scale = window_scale(hist)
+        x = torch.from_numpy((hist / scale).astype(np.float32)).unsqueeze(-1).to(device)
         k = torch.from_numpy(cal.astype(np.float32)).to(device)
         with torch.inference_mode():
             y = model(x, k)
-        return y.cpu().numpy() * std + mean
+        return y.cpu().numpy() * scale[:, :, None]
 
     return f
 
@@ -180,7 +181,7 @@ def evaluate(fn, d, chunk=512):
     y = d["test_y"]
     val, test = run(d["val_X_hist"], d["val_X_cal"]), run(d["test_X_hist"], d["test_X_cal"])
     point = test[..., 1] if test.ndim == 3 else test
-    lower, upper = conformalize(d["val_y"], *bounds(val), *bounds(test))
+    lower, upper = conformalize(d["val_y"], *bounds(val), *bounds(test), d["val_X_hist"], d["test_X_hist"])
     err = y - point
     out = {
         "mae": float(np.abs(err).mean()),
@@ -208,9 +209,8 @@ def measure(runtimes, d, a):
 def run_neural(name, a, d, device):
     th, tc, ty = d["train_X_hist"], d["train_X_cal"], d["train_y"]
     L, H, C = th.shape[1], ty.shape[1], tc.shape[2]
-    mean, std = float(th.mean()), max(float(th.std()), 1e-6)
-    train = make_tensors(th, tc, ty, mean, std)
-    val = make_tensors(d["val_X_hist"], d["val_X_cal"], d["val_y"], mean, std)
+    train = make_tensors(th, tc, ty)
+    val = make_tensors(d["val_X_hist"], d["val_X_cal"], d["val_y"])
     loader = DataLoader(TensorDataset(*train), batch_size=a.batch_size, shuffle=True, num_workers=0)
     model = DLinear(L, H, C) if name == "dlinear" else GRUForecast(a.hidden, C, H)
 
@@ -231,15 +231,15 @@ def run_neural(name, a, d, device):
 
     model = model.cpu().eval()
     errors, runtimes = {}, {}
-    runtimes["cpu_fp32"] = (torch_fn(model, torch.device("cpu"), mean, std), nop, False, serialized_bytes(model))
+    runtimes["cpu_fp32"] = (torch_fn(model, torch.device("cpu")), nop, False, serialized_bytes(model))
     try:
         q = quantize_dynamic(copy.deepcopy(model), {nn.Linear, nn.GRU}, dtype=torch.qint8).eval()
-        runtimes["cpu_int8"] = (torch_fn(q, torch.device("cpu"), mean, std), nop, False, serialized_bytes(q))
+        runtimes["cpu_int8"] = (torch_fn(q, torch.device("cpu")), nop, False, serialized_bytes(q))
     except Exception as e:  # noqa: BLE001
         errors["cpu_int8"] = repr(e)[:200]
     if device.type == "cuda":
         gpu = copy.deepcopy(model).to(device).eval()
-        runtimes["cuda_fp32"] = (torch_fn(gpu, device, mean, std), lambda: torch.cuda.synchronize(), True, None)
+        runtimes["cuda_fp32"] = (torch_fn(gpu, device), lambda: torch.cuda.synchronize(), True, None)
 
     return {name: {
         "parameters": sum(p.numel() for p in model.parameters()),
