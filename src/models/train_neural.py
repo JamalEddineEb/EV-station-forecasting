@@ -7,30 +7,45 @@ from torch.utils.data import DataLoader, TensorDataset
 from models import profiling
 from models.profiling import profile
 
+# Each model outputs three quantiles per horizon step: the 10th-90th range is the 80% interval,
+# the median is the point forecast. Output shape: (batch, horizon, 3), sorted along the last axis.
+QUANTILES = (0.1, 0.5, 0.9)
+LO, MID, HI = 0, 1, 2
+N_Q = len(QUANTILES)
+
 
 class DLinear(nn.Module):
-    def __init__(self, seq_len, horizon, cal_dim, kernel=25):
+    def __init__(self, seq_len, horizon, cal_dim, kernel=25, n_q=N_Q):
         super().__init__()
-        self.seasonal = nn.Linear(seq_len, horizon)
-        self.trend = nn.Linear(seq_len, horizon)
-        self.calendar = nn.Linear(cal_dim, 1)
-        self.kernel = kernel
+        self.seasonal = nn.Linear(seq_len, horizon*n_q)
+        self.trend = nn.Linear(seq_len, horizon*n_q)
+        self.calendar = nn.Linear(cal_dim, n_q)
+        self.kernel, self.horizon, self.n_q = kernel, horizon, n_q
     def forward(self, hist, cal):
         x = hist.squeeze(-1)
         p = (self.kernel - 1) // 2
         xp = nn.functional.pad(x.unsqueeze(1), (p,p), mode="replicate")
         trend = nn.functional.avg_pool1d(xp, self.kernel, stride=1).squeeze(1)
-        return self.seasonal(x-trend) + self.trend(trend) + self.calendar(cal).squeeze(-1)
+        out = (self.seasonal(x-trend) + self.trend(trend)).reshape(-1, self.horizon, self.n_q)
+        return torch.sort(out + self.calendar(cal), dim=-1).values  # sorted: no crossing quantiles
 
 class GRUForecast(nn.Module):
-    def __init__(self, hidden, cal_dim, horizon):
+    def __init__(self, hidden, cal_dim, horizon, n_q=N_Q):
         super().__init__()
         self.gru = nn.GRU(1, hidden, batch_first=True)
-        self.head = nn.Sequential(nn.Linear(hidden+cal_dim,64), nn.ReLU(), nn.Linear(64,1))
+        self.head = nn.Sequential(nn.Linear(hidden+cal_dim,64), nn.ReLU(), nn.Linear(64,n_q))
     def forward(self, hist, cal):
         _, h = self.gru(hist)
         context = h[-1].unsqueeze(1).expand(-1, cal.shape[1], -1)
-        return self.head(torch.cat([context,cal],dim=-1)).squeeze(-1)
+        return torch.sort(self.head(torch.cat([context,cal],dim=-1)), dim=-1).values
+
+class PinballLoss(nn.Module):
+    def __init__(self, quantiles):
+        super().__init__()
+        self.register_buffer("q", torch.tensor(quantiles))
+    def forward(self, pred, y):
+        err = y.unsqueeze(-1) - pred
+        return torch.maximum(self.q*err, (self.q-1)*err).mean()
 
 def make_tensors(hist, cal, y, mean, std):
     h = torch.from_numpy(((hist-mean)/std).astype(np.float32)).unsqueeze(-1)
@@ -60,14 +75,14 @@ def validate(model, val_data, device, loss_fn, batch=2048):
 
 @profile("fit")
 def fit(model, loader, val_data, device, epochs, patience, lr, name):
-    """Train with early stopping. Call profiling.tag(name) first to label the measurements."""
-    model.to(device); opt=torch.optim.Adam(model.parameters(),lr=lr); loss_fn=nn.MSELoss()
+    """Train with pinball loss and early stopping. Call profiling.tag(name) first to label measurements."""
+    model.to(device); opt=torch.optim.Adam(model.parameters(),lr=lr); loss_fn=PinballLoss(QUANTILES).to(device)
     val_data=[x.to(device) for x in val_data]
     best=float("inf"); best_state=None; stale=0
     for epoch in range(epochs):
         train_epoch(model, loader, opt, loss_fn, device)
         vl = validate(model, val_data, device, loss_fn)
-        print("{} epoch {:02d}: val_mse={:.6f}".format(name,epoch+1,vl),flush=True)
+        print("{} epoch {:02d}: val_pinball={:.6f}".format(name,epoch+1,vl),flush=True)
         if vl<best:
             best=vl; best_state={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}; stale=0
         else: stale+=1
@@ -81,6 +96,7 @@ def fit(model, loader, val_data, device, epochs, patience, lr, name):
 @profile("predict")
 @torch.no_grad()
 def predict(model, data, device, mean, std, batch=512):
+    """Quantile forecasts in original units, shape (N, horizon, 3)."""
     model.eval(); h,c=data; out=[]
     for i in range(0,len(h),batch):
         out.append(model(h[i:i+batch].to(device),c[i:i+batch].to(device)).cpu().numpy())
@@ -91,7 +107,7 @@ def save_checkpoint(model, name, outdir, mean, std, meta):
     """Save everything needed to rebuild the model, so benchmarks never need to retrain."""
     path = os.path.join(outdir, name.lower()+".pt")
     state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
-    torch.save({"name": name, "state_dict": state, "mean": mean, "std": std, **meta}, path)
+    torch.save({"name": name, "state_dict": state, "mean": mean, "std": std, "quantiles": QUANTILES, **meta}, path)
     return path
 
 
@@ -130,7 +146,10 @@ def main():
         model=fit(model,loader,va,device,a.epochs,a.patience,a.lr,name)
         vp=predict(model,(va[0],va[1]),device,mean,std); sp=predict(model,te,device,mean,std)
         out=os.path.join(a.outdir,name.lower()+"_predictions.npz")
-        np.savez_compressed(out,val_pred=vp.astype(np.float32),test_pred=sp.astype(np.float32),y_val=vy,y_test=sy)
+        arrays={}
+        for split,q in (("val",vp),("test",sp)):
+            arrays.update({split+"_lower":q[...,LO], split+"_pred":q[...,MID], split+"_upper":q[...,HI]})
+        np.savez_compressed(out,y_val=vy,y_test=sy,**{k:v.astype(np.float32) for k,v in arrays.items()})
         ckpt=save_checkpoint(model,name,a.outdir,mean,std,
                              {"hidden":a.hidden,"seq_len":L,"horizon":H,"calendar_dim":C})
         profiling.dump(os.path.join(a.metrics_dir,name.lower()+"_train.json"),prefix=name,extra={

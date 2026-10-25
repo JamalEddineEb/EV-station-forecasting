@@ -30,8 +30,9 @@ from torch.ao.quantization import quantize_dynamic
 from torch.utils.data import DataLoader, TensorDataset
 
 from model_selection.baselines import persistence, seasonal_naive
+from model_selection.conformal import conformalize
 from models import profiling
-from models.train_neural import DLinear, GRUForecast, fit, make_tensors
+from models.train_neural import N_Q, DLinear, GRUForecast, fit, make_tensors
 from models.train_ridge import fit_ridge, make_features, prepare
 
 WORKERS = ("dlinear", "gru", "ridge", "baselines")
@@ -107,9 +108,9 @@ def hardware(device):
 def analytic_flops(name, L, H, C, hidden):
     """Hand-derived forward FLOPs/sample (2 per multiply-add; ignores activations)."""
     if name == "dlinear":
-        return 4 * L * H + 2 * H * C + 25 * L  # two Linear(L,H), calendar, avg-pool
+        return 4 * L * H * N_Q + 2 * H * C * N_Q + 25 * L  # two Linear(L,H*Q), calendar, avg-pool
     gru = 6 * hidden * (1 + hidden) * L  # 3 gates x 2 x (in*h + h*h) per step
-    head = H * (2 * (hidden + C) * 64 + 2 * 64)  # Linear(h+C,64) + Linear(64,1) per step
+    head = H * (2 * (hidden + C) * 64 + 2 * 64 * N_Q)  # Linear(h+C,64) + Linear(64,Q) per step
     return gru + head
 
 
@@ -165,10 +166,31 @@ def bench(fn, sync, is_cuda, d, a):
 
 
 def evaluate(fn, d, chunk=512):
-    hist, cal, y = d["test_X_hist"], d["test_X_cal"], d["test_y"]
-    pred = np.concatenate([fn(hist[i:i + chunk], cal[i:i + chunk]) for i in range(0, len(hist), chunk)])
-    err = y - pred
-    return {"mae": float(np.abs(err).mean()), "rmse": float(np.sqrt((err**2).mean()))}
+    """Test MAE/RMSE of the point forecast plus 80% interval coverage and width.
+
+    fn returns quantiles (N, H, 3) for native-interval models or a point forecast (N, H);
+    both go through the same conformal calibration as the model comparison.
+    """
+    def run(hist, cal):
+        return np.concatenate([fn(hist[i:i + chunk], cal[i:i + chunk]) for i in range(0, len(hist), chunk)])
+
+    def bounds(p):
+        return (p[..., 0], p[..., 2]) if p.ndim == 3 else (p, p)
+
+    y = d["test_y"]
+    val, test = run(d["val_X_hist"], d["val_X_cal"]), run(d["test_X_hist"], d["test_X_cal"])
+    point = test[..., 1] if test.ndim == 3 else test
+    lower, upper = conformalize(d["val_y"], *bounds(val), *bounds(test))
+    err = y - point
+    out = {
+        "mae": float(np.abs(err).mean()),
+        "rmse": float(np.sqrt((err**2).mean())),
+        "coverage_80": float(np.mean((y >= lower) & (y <= upper))),
+        "interval_width": float(np.mean(upper - lower)),
+    }
+    if test.ndim == 3:  # native quantiles, before calibration
+        out["raw_coverage_80"] = float(np.mean((y >= test[..., 0]) & (y <= test[..., 2])))
+    return out
 
 
 def measure(runtimes, d, a):
@@ -344,13 +366,19 @@ def render(res):
                 b["throughput_sps"], r["rss_mib"], fmt(r.get("gpu_peak_incremental_mib"), ".1f"),
                 fmt(r.get("size_kib"), ".1f")))
     L += ["", "## Test accuracy and effect of optimizations", "",
-          "| Model / runtime | MAE | RMSE | dMAE vs first runtime | dRMSE vs first runtime |", "|---|---:|---:|---:|---:|"]
+          "| Model / runtime | MAE (median) | RMSE | dMAE vs first runtime | dRMSE vs first runtime | Raw 80% coverage | Calibrated 80% coverage | Mean width |",
+          "|---|---:|---:|---:|---:|---:|---:|---:|"]
     for name, m in res["models"].items():
         ref = next(iter(m["runtimes"].values()))["accuracy"]
         for rt, r in m["runtimes"].items():
             acc = r["accuracy"]
-            L.append("| {}/{} | {:.5f} | {:.5f} | {:+.5f} | {:+.5f} |".format(
-                name, rt, acc["mae"], acc["rmse"], acc["mae"] - ref["mae"], acc["rmse"] - ref["rmse"]))
+            L.append("| {}/{} | {:.5f} | {:.5f} | {:+.5f} | {:+.5f} | {} | {:.3f} | {:.4f} |".format(
+                name, rt, acc["mae"], acc["rmse"], acc["mae"] - ref["mae"], acc["rmse"] - ref["rmse"],
+                fmt(acc.get("raw_coverage_80"), ".3f"), acc["coverage_80"], acc["interval_width"]))
+    L += ["", "Every system outputs an 80% interval. Neural models predict the 10th and 90th percentiles "
+          "directly (raw coverage); point forecasters have none. All intervals are then calibrated "
+          "on the validation set with split-conformal (same as the model comparison). MAE/RMSE use the "
+          "median (neural) or point forecast; coverage and width average all test samples and horizons.",]
     L += ["", "## Optimizations attempted", ""]
     for name, m in res["models"].items():
         if name in ("dlinear", "gru"):
