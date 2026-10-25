@@ -1,0 +1,297 @@
+{
+  "generated_at": "2026-10-24 21:11:10 EDT",
+  "hardware": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "logical_cpus": 256,
+    "torch_threads": 1,
+    "platform": "Linux-5.14.0-687.53.1.el9_8.x86_64-x86_64-with-glibc2.17",
+    "python": "3.8.20",
+    "torch": "1.12.1+cu113",
+    "scikit_learn": "1.3.2",
+    "device": "cuda:0",
+    "gpu": "NVIDIA A100-SXM4-80GB MIG 7g.80gb",
+    "gpu_total_gib": 79.25
+  },
+  "dataset": {
+    "train": 56461,
+    "val": 12087,
+    "test": 12102,
+    "input_length": 672,
+    "horizon": 16
+  },
+  "models": {
+    "dlinear": {
+      "parameters": 21542,
+      "disk_mib": 0.08400630950927734,
+      "flops_counter": null,
+      "flops_analytic": 59968,
+      "training": {
+        "total_s": 17.53401891910471,
+        "epochs": 10,
+        "s_per_epoch": 1.4131235380657017,
+        "samples_per_s": 39954.75163996236,
+        "rss_growth_mib": 2383.4609375,
+        "peak_gpu_mib": 52.18359375,
+        "energy_kwh": null
+      },
+      "runtimes": {
+        "cpu_fp32": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 0.09224505629390478,
+            "p90_ms": 0.09784505236893892,
+            "throughput_sps": 10851.18778966039
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 1.0023096110671759,
+            "p90_ms": 1.0070660850033164,
+            "throughput_sps": 63673.38670679949
+          },
+          "rss_mib": 3237.6640625,
+          "accuracy": {
+            "mae": 0.9594423770904541,
+            "rmse": 1.3605796098709106
+          },
+          "size_kib": 86.0224609375
+        },
+        "cpu_int8": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 0.2124699531123042,
+            "p90_ms": 0.22425190545618534,
+            "throughput_sps": 4632.781324875741
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 1.0242644930258393,
+            "p90_ms": 1.1637469753623009,
+            "throughput_sps": 60522.544692189935
+          },
+          "rss_mib": 3256.2578125,
+          "accuracy": {
+            "mae": 0.9610950350761414,
+            "rmse": 1.361901044845581
+          },
+          "size_kib": 24.9384765625
+        },
+        "cuda_fp32": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 7.352051557973027,
+            "p90_ms": 7.509777252562344,
+            "throughput_sps": 214.58370469160195
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 4.973128437995911,
+            "p90_ms": 5.122177000157535,
+            "throughput_sps": 18241.049694612488
+          },
+          "rss_mib": 3256.328125,
+          "gpu_peak_incremental_mib": 0.685546875,
+          "accuracy": {
+            "mae": 0.9594423770904541,
+            "rmse": 1.3605796098709106
+          }
+        }
+      },
+      "errors": {
+        "onnx_cpu": "onnx / onnxruntime not installed"
+      }
+    },
+    "gru": {
+      "parameters": 17409,
+      "disk_mib": 0.0686178207397461,
+      "flops_counter": null,
+      "flops_analytic": 16916480,
+      "training": {
+        "total_s": 66.817512053065,
+        "epochs": 15,
+        "s_per_epoch": 4.044050648016855,
+        "samples_per_s": 13961.496755162469,
+        "rss_growth_mib": 2850.046875,
+        "peak_gpu_mib": 5763.93408203125,
+        "energy_kwh": null
+      },
+      "runtimes": {
+        "cpu_fp32": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 7.457472034730017,
+            "p90_ms": 7.487782253883779,
+            "throughput_sps": 136.01610908524341
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 65.87488006334752,
+            "p90_ms": 66.22727303765714,
+            "throughput_sps": 980.8355111924843
+          },
+          "rss_mib": 3770.125,
+          "accuracy": {
+            "mae": 1.0687533617019653,
+            "rmse": 1.5441102981567383
+          },
+          "size_kib": 70.2646484375
+        },
+        "cpu_int8": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 6.050067022442818,
+            "p90_ms": 6.609174935147166,
+            "throughput_sps": 162.93850402189133
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 42.94473503250629,
+            "p90_ms": 47.36278711352497,
+            "throughput_sps": 1438.6869703956756
+          },
+          "rss_mib": 3767.0,
+          "accuracy": {
+            "mae": 1.0646417140960693,
+            "rmse": 1.5377005338668823
+          },
+          "size_kib": 22.3759765625
+        },
+        "cuda_fp32": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 7.7968715922906995,
+            "p90_ms": 8.00657793879509,
+            "throughput_sps": 164.98300098342122
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 5.46276243403554,
+            "p90_ms": 5.615796730853617,
+            "throughput_sps": 13116.576133599789
+          },
+          "rss_mib": 3776.6875,
+          "gpu_peak_incremental_mib": 186.9580078125,
+          "accuracy": {
+            "mae": 1.0687533617019653,
+            "rmse": 1.544110655784607
+          }
+        }
+      },
+      "errors": {
+        "onnx_cpu": "onnx / onnxruntime not installed"
+      }
+    },
+    "ridge": {
+      "parameters": 12048,
+      "disk_mib": 0.0642557144165039,
+      "flops_counter": null,
+      "flops_analytic": 24064,
+      "training": {
+        "total_s": 27.61168775591068,
+        "feature_prep_s": 0.3498204159550369,
+        "samples_per_s": 2044.8224860109722,
+        "rss_growth_mib": 167.6328125,
+        "energy_kwh": null
+      },
+      "runtimes": {
+        "cpu_fp32": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 0.13116456102579832,
+            "p90_ms": 0.1400848850607872,
+            "throughput_sps": 7524.5094295654
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 0.30230998527258635,
+            "p90_ms": 0.3166999202221632,
+            "throughput_sps": 210261.38278470672
+          },
+          "rss_mib": 848.74609375,
+          "accuracy": {
+            "mae": 0.9567121267318726,
+            "rmse": 1.3628497123718262
+          }
+        }
+      },
+      "errors": {}
+    },
+    "persistence": {
+      "parameters": 0,
+      "disk_mib": 0.0,
+      "flops_counter": null,
+      "flops_analytic": 0,
+      "training": {
+        "total_s": 0.0
+      },
+      "errors": {},
+      "runtimes": {
+        "cpu_numpy": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 0.002545071765780449,
+            "p90_ms": 0.0026300549507141113,
+            "throughput_sps": 359557.117359667
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 0.006390037015080452,
+            "p90_ms": 0.006550992839038372,
+            "throughput_sps": 9594633.657077894
+          },
+          "rss_mib": 648.12109375,
+          "accuracy": {
+            "mae": 1.212769627571106,
+            "rmse": 2.090606689453125
+          }
+        }
+      }
+    },
+    "seasonal_naive": {
+      "parameters": 0,
+      "disk_mib": 0.0,
+      "flops_counter": null,
+      "flops_analytic": 0,
+      "training": {
+        "total_s": 0.0
+      },
+      "errors": {},
+      "runtimes": {
+        "cpu_numpy": {
+          "single": {
+            "batch_size": 1,
+            "p50_ms": 0.001400010660290718,
+            "p90_ms": 0.0014690449461340904,
+            "throughput_sps": 619982.2442662033
+          },
+          "batch": {
+            "batch_size": 64,
+            "p50_ms": 0.003469875082373619,
+            "p90_ms": 0.003801030106842518,
+            "throughput_sps": 17693489.054387555
+          },
+          "rss_mib": 649.76953125,
+          "accuracy": {
+            "mae": 1.2169063091278076,
+            "rmse": 1.9771485328674316
+          }
+        }
+      }
+    }
+  },
+  "settings": {
+    "data": "outputs/caltech_occupancy_data.npz",
+    "outdir": "outputs/benchmark",
+    "device": "auto",
+    "epochs": 30,
+    "patience": 5,
+    "batch_size": 256,
+    "lr": 0.001,
+    "hidden": 64,
+    "alpha": 10.0,
+    "seed": 42,
+    "inference_batch_size": 64,
+    "iterations": 200,
+    "warmup": 20,
+    "cpu_threads": 1
+  }
+}
