@@ -57,6 +57,11 @@ def parse_args():
     p.add_argument("--reuse-raw", action="store_true",
                    help="skip running workers; rebuild results/report from existing _raw_*.json")
     p.add_argument("--worker", choices=WORKERS, help=argparse.SUPPRESS)
+    p.add_argument(
+        "--site",
+        default="unknown",
+        help="Dataset site name, e.g. Caltech or JPL",
+    )
     return p.parse_args()
 
 
@@ -166,43 +171,119 @@ def bench(fn, sync, is_cuda, d, a):
     return out
 
 
-def evaluate(fn, d, chunk=512):
-    """Test MAE/RMSE of the point forecast plus 80% interval coverage and width.
 
-    fn returns quantiles (N, H, 3) for native-interval models or a point forecast (N, H);
-    both go through the same conformal calibration as the model comparison.
-    """
+def evaluate(fn, d, chunk=512, save_path=None):
+    """Evaluate forecasts and optionally save predictions and intervals."""
+
     def run(hist, cal):
-        return np.concatenate([fn(hist[i:i + chunk], cal[i:i + chunk]) for i in range(0, len(hist), chunk)])
+        return np.concatenate([
+            fn(hist[i:i + chunk], cal[i:i + chunk])
+            for i in range(0, len(hist), chunk)
+        ])
 
     def bounds(p):
         return (p[..., 0], p[..., 2]) if p.ndim == 3 else (p, p)
 
     y = d["test_y"]
-    val, test = run(d["val_X_hist"], d["val_X_cal"]), run(d["test_X_hist"], d["test_X_cal"])
+    val = run(d["val_X_hist"], d["val_X_cal"])
+    test = run(d["test_X_hist"], d["test_X_cal"])
+
+    # Point forecast: median for quantile models, direct output otherwise.
     point = test[..., 1] if test.ndim == 3 else test
-    lower, upper = conformalize(d["val_y"], *bounds(val), *bounds(test), d["val_X_hist"], d["test_X_hist"])
+
+    # Calibrate prediction intervals using validation data.
+    lower, upper = conformalize(
+        d["val_y"],
+        *bounds(val),
+        *bounds(test),
+        d["val_X_hist"],
+        d["test_X_hist"],
+    )
+
     err = y - point
+
     out = {
         "mae": float(np.abs(err).mean()),
-        "rmse": float(np.sqrt((err**2).mean())),
+        "rmse": float(np.sqrt((err ** 2).mean())),
         "coverage_80": float(np.mean((y >= lower) & (y <= upper))),
         "interval_width": float(np.mean(upper - lower)),
     }
-    if test.ndim == 3:  # native quantiles, before calibration
-        out["raw_coverage_80"] = float(np.mean((y >= test[..., 0]) & (y <= test[..., 2])))
+
+    if test.ndim == 3:
+        out["raw_coverage_80"] = float(
+            np.mean((y >= test[..., 0]) & (y <= test[..., 2]))
+        )
+
+
+    # Save forecasts separately from benchmark metrics.
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        steps = np.arange(y.shape[1])
+        origins = d.get(
+            "test_origins", np.array([], dtype=np.int64)
+        )
+
+        forecast_timestamps = np.empty((0, 0), dtype="U25")
+        origin_timestamps = np.empty(0, dtype="U25")
+
+        if (
+            len(origins) == len(y)
+            and "timestamps" in d
+        ):
+            timestamps = d["timestamps"]
+
+            # Each origin identifies the first future target timestep.
+            forecast_timestamps = timestamps[
+                origins[:, None] + steps[None, :]
+            ]
+
+            # The forecast is issued at the last observed timestep,
+            # immediately before the first target.
+            if np.all(origins > 0):
+                origin_timestamps = timestamps[origins - 1]
+
+        np.savez_compressed(
+            save_path,
+            actual=y.astype(np.float32),
+            prediction=point.astype(np.float32),
+            lower=lower.astype(np.float32),
+            upper=upper.astype(np.float32),
+            test_origins=origins,
+            forecast_timestamps=forecast_timestamps,
+            origin_timestamps=origin_timestamps,
+            site_name=np.asarray(d.get("site_name", "unknown")),
+            horizon_steps=steps,
+        )
+
+
     return out
 
 
-def measure(runtimes, d, a):
+
+def measure(runtimes, d, a, model_name):
     out = {}
-    for name, (fn, sync, is_cuda, size) in runtimes.items():
+
+    for runtime_name, (fn, sync, is_cuda, size) in runtimes.items():
         r = bench(fn, sync, is_cuda, d, a)
-        r["accuracy"] = evaluate(fn, d)
+
+        forecast_path = os.path.join(
+            a.outdir,
+            "forecasts",
+            f"{model_name}_{runtime_name}.npz",
+        )
+
+        r["accuracy"] = evaluate(
+            fn, d, save_path=forecast_path
+        )
+
         if size is not None:
             r["size_kib"] = size / 1024
-        out[name] = r
+
+        out[runtime_name] = r
+
     return out
+
 
 
 # ---------------------------------------------------------------- workers
@@ -246,7 +327,7 @@ def run_neural(name, a, d, device):
         "disk_mib": serialized_bytes(model) / 2**20,
         "flops_analytic": analytic_flops(name, L, H, C, a.hidden),
         "training": training,
-        "runtimes": measure(runtimes, d, a),
+        "runtimes": measure(runtimes, d, a, name),
         "errors": errors,
     }}
 
@@ -266,7 +347,7 @@ def run_ridge(a, d):
         return model.predict(scaler.transform(make_features(hist, cal)))
 
     with threadpool_limits(limits=a.cpu_threads):
-        runtimes = measure({"cpu_fp32": (fn, nop, False, None)}, d, a)
+        runtimes = measure({"cpu_fp32": (fn, nop, False, None)}, d, a, "ridge")
     return {"ridge": {
         "parameters": int(model.coef_.size + model.intercept_.size),
         "disk_mib": os.path.getsize(path) / 2**20,
@@ -291,7 +372,7 @@ def run_baselines(a, d):
         out[key] = {
             "parameters": 0, "disk_mib": 0.0, "flops_analytic": 0,
             "training": {"total_s": 0.0}, "errors": {},
-            "runtimes": measure({"cpu_numpy": (fn, nop, False, None)}, d, a),
+            "runtimes": measure({"cpu_numpy": (fn, nop, False, None)}, d, a, key),
         }
     return out
 
@@ -304,6 +385,7 @@ def worker_main(a):
     hw = hardware(device)  # fail fast, before any long-running work
     print("[{}] device={} threads={}".format(a.worker, device, a.cpu_threads), flush=True)
     d = load(a.data)
+    d["site_name"] = a.site
     print("[{}] data loaded: {} train examples".format(a.worker, len(d["train_X_hist"])), flush=True)
     if a.worker in ("dlinear", "gru"):
         models = run_neural(a.worker, a, d, device)

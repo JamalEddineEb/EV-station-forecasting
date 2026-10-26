@@ -50,12 +50,43 @@ class GRUForecast(nn.Module):
         return torch.sort(self.head(torch.cat([context,cal],dim=-1)), dim=-1).values
 
 class PinballLoss(nn.Module):
-    def __init__(self, quantiles):
+    def __init__(self, quantiles, horizon_weighting="uniform"):
         super().__init__()
         self.register_buffer("q", torch.tensor(quantiles))
+        self.horizon_weighting = horizon_weighting
+
     def forward(self, pred, y):
+        # pred: (batch, horizon, quantiles)
+        # y:    (batch, horizon)
+
         err = y.unsqueeze(-1) - pred
-        return torch.maximum(self.q*err, (self.q-1)*err).mean()
+        pinball = torch.maximum(
+            self.q * err,
+            (self.q - 1) * err
+        )  # (batch, horizon, quantiles)
+
+        # Average over quantiles, preserving each horizon.
+        per_horizon = pinball.mean(dim=-1)  # (batch, horizon)
+
+        if self.horizon_weighting == "arctan":
+            H = pred.shape[1]
+            h = torch.arange(
+                1, H + 1,
+                device=pred.device,
+                dtype=pred.dtype
+            )
+            weights = 1 + torch.pi / 4 - torch.atan(h)
+            weights = weights / weights.mean()
+
+            per_horizon = per_horizon * weights.unsqueeze(0)
+
+        elif self.horizon_weighting != "uniform":
+            raise ValueError(
+                f"Unknown horizon weighting: {self.horizon_weighting}"
+            )
+
+        return per_horizon.mean()
+
 
 def make_tensors(hist, cal, y):
     s = window_scale(hist)
