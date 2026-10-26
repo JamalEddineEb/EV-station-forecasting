@@ -1,0 +1,2 @@
+python src/benchmark_models.py --outdir outputs/benchmark_jp --site JPL --data outputs/jpl_occupancy_data.npz
+python src/benchmark_models.py --outdir outputs/benchmark_caltech_weighted_loss_cqr --site Caltech
