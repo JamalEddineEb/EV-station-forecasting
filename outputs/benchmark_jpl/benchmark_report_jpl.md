@@ -1,6 +1,6 @@
 # Forecast model benchmark
 
-Generated: 2026-10-26 12:14:58 EDT
+Generated: 2026-10-26 12:40:43 EDT
 
 ## Setup
 
@@ -14,9 +14,9 @@ Generated: 2026-10-26 12:14:58 EDT
 
 | Model | Total fit (s) | Epochs | s/epoch | Samples/s | Peak GPU (MiB) | RSS growth (MiB) | Params | Size (MiB) | GFLOPs/sample (analytic) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| dlinear | 20.26 | 12 | 1.408 | 40649 | 54.1 | 2384.9 | 64,626 | 0.2483 | 0.000146 |
-| gru | 41.47 | 8 | 4.404 | 12997 | 5765.0 | 2866.0 | 17,539 | 0.0691 | 0.016921 |
-| ridge | 39.40 | n/a | n/a | 1453 | n/a | 169.9 | 12,048 | 0.0643 | 0.000024 |
+| dlinear | 22.33 | 12 | 1.529 | 37442 | 54.1 | 2382.2 | 64,626 | 0.2483 | 0.000146 |
+| gru | 60.61 | 8 | 6.303 | 9081 | 5765.0 | 2854.7 | 17,539 | 0.0691 | 0.016921 |
+| ridge | 40.84 | n/a | n/a | 1402 | n/a | 169.9 | 12,048 | 0.0643 | 0.000024 |
 | persistence | 0.00 | n/a | n/a | n/a | n/a | n/a | 0 | 0.0000 | 0.000000 |
 | seasonal_naive | 0.00 | n/a | n/a | n/a | n/a | n/a | 0 | 0.0000 | 0.000000 |
 
@@ -26,29 +26,29 @@ Neural fit time includes per-epoch validation and early stopping (first CUDA epo
 
 | Model / runtime | Single p50 (ms) | Single p90 (ms) | Batch | Batch p50 (ms) | Batch p90 (ms) | Samples/s (batch) | RSS (MiB) | GPU peak (+MiB) | Weights (KiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| dlinear/cpu_fp32 | 0.1361 | 0.1431 | 64 | 1.2713 | 1.3181 | 49860 | 3247 | n/a | 254.3 |
-| dlinear/cpu_int8 | 0.2613 | 0.2730 | 64 | 1.1310 | 1.1490 | 56051 | 3319 | n/a | 67.2 |
-| dlinear/cuda_fp32 | 7.4091 | 7.5680 | 64 | 5.0182 | 5.1424 | 15186 | 3320 | 0.7 | n/a |
-| gru/cpu_fp32 | 6.7160 | 6.7374 | 64 | 59.3717 | 60.3518 | 1073 | 3791 | n/a | 70.8 |
-| gru/cpu_int8 | 5.9764 | 6.0142 | 64 | 38.6768 | 42.3147 | 1610 | 3791 | n/a | 22.5 |
-| gru/cuda_fp32 | 7.8076 | 7.9365 | 64 | 5.4672 | 5.5940 | 12510 | 3796 | 187.0 | n/a |
-| ridge/cpu_fp32 | 0.1141 | 0.1245 | 64 | 0.2644 | 0.3039 | 235666 | 857 | n/a | n/a |
-| persistence/cpu_numpy | 0.0025 | 0.0026 | 64 | 0.0065 | 0.0067 | 9393447 | 650 | n/a | n/a |
-| seasonal_naive/cpu_numpy | 0.0015 | 0.0030 | 64 | 0.0035 | 0.0049 | 11638238 | 666 | n/a | n/a |
+| dlinear/cpu_fp32 | 0.1338 | 0.1528 | 64 | 1.2763 | 1.2940 | 49863 | 3245 | n/a | 254.3 |
+| dlinear/cpu_int8 | 0.2682 | 0.3045 | 64 | 1.1360 | 1.2826 | 55317 | 3304 | n/a | 67.2 |
+| dlinear/cuda_fp32 | 7.9782 | 8.5802 | 64 | 5.3496 | 5.5545 | 13004 | 3304 | 0.7 | n/a |
+| gru/cpu_fp32 | 7.5489 | 7.5700 | 64 | 66.7701 | 67.1883 | 959 | 3781 | n/a | 70.8 |
+| gru/cpu_int8 | 6.6375 | 6.6960 | 64 | 40.6178 | 43.5003 | 1570 | 3779 | n/a | 22.5 |
+| gru/cuda_fp32 | 7.8409 | 8.0045 | 64 | 5.4709 | 5.6021 | 12339 | 3774 | 187.0 | n/a |
+| ridge/cpu_fp32 | 0.1271 | 0.1348 | 64 | 0.3009 | 0.3111 | 212303 | 853 | n/a | n/a |
+| persistence/cpu_numpy | 0.0042 | 0.0044 | 64 | 0.0058 | 0.0073 | 7305085 | 651 | n/a | n/a |
+| seasonal_naive/cpu_numpy | 0.0015 | 0.0015 | 64 | 0.0037 | 0.0040 | 17149049 | 662 | n/a | n/a |
 
 ## Test accuracy and effect of optimizations
 
 | Model / runtime | MAE (median) | RMSE | dMAE vs first runtime | dRMSE vs first runtime | Raw 80% coverage | Calibrated 80% coverage | Mean width |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| dlinear/cpu_fp32 | 1.80643 | 3.10826 | +0.00000 | +0.00000 | 0.701 | 0.811 | 6.5426 |
-| dlinear/cpu_int8 | 1.87480 | 3.17968 | +0.06837 | +0.07142 | 0.694 | 0.805 | 6.6933 |
-| dlinear/cuda_fp32 | 1.80643 | 3.10826 | +0.00000 | +0.00000 | 0.701 | 0.811 | 6.5426 |
-| gru/cpu_fp32 | 1.90251 | 3.71436 | +0.00000 | +0.00000 | 0.744 | 0.820 | 6.4808 |
-| gru/cpu_int8 | 2.01469 | 3.88585 | +0.11218 | +0.17150 | 0.722 | 0.805 | 6.6380 |
-| gru/cuda_fp32 | 1.90251 | 3.71436 | +0.00000 | +0.00000 | 0.744 | 0.820 | 6.4808 |
-| ridge/cpu_fp32 | 1.99510 | 3.04615 | +0.00000 | +0.00000 | n/a | 0.736 | 5.0498 |
-| persistence/cpu_numpy | 3.24855 | 6.23421 | +0.00000 | +0.00000 | n/a | 0.771 | 9.8618 |
-| seasonal_naive/cpu_numpy | 3.17414 | 6.28547 | +0.00000 | +0.00000 | n/a | 0.746 | 6.9774 |
+| dlinear/cpu_fp32 | 1.80643 | 3.10826 | +0.00000 | +0.00000 | 0.701 | 0.798 | 6.3837 |
+| dlinear/cpu_int8 | 1.87480 | 3.17968 | +0.06837 | +0.07142 | 0.694 | 0.792 | 6.5140 |
+| dlinear/cuda_fp32 | 1.80643 | 3.10826 | +0.00000 | +0.00000 | 0.701 | 0.798 | 6.3837 |
+| gru/cpu_fp32 | 1.90251 | 3.71436 | +0.00000 | +0.00000 | 0.744 | 0.812 | 6.3749 |
+| gru/cpu_int8 | 2.01469 | 3.88585 | +0.11218 | +0.17150 | 0.722 | 0.795 | 6.5139 |
+| gru/cuda_fp32 | 1.90251 | 3.71436 | +0.00000 | +0.00000 | 0.744 | 0.812 | 6.3749 |
+| ridge/cpu_fp32 | 1.99510 | 3.04615 | +0.00000 | +0.00000 | n/a | 0.696 | 4.4882 |
+| persistence/cpu_numpy | 3.24855 | 6.23421 | +0.00000 | +0.00000 | n/a | 0.750 | 7.6250 |
+| seasonal_naive/cpu_numpy | 3.17414 | 6.28547 | +0.00000 | +0.00000 | n/a | 0.741 | 6.0000 |
 
 Every system outputs an 80% interval. Neural models predict the 10th and 90th percentiles directly (raw coverage); point forecasters have none. All intervals are then calibrated on the validation set with split-conformal (same as the model comparison). MAE/RMSE use the median (neural) or point forecast; coverage and width average all test samples and horizons.
 

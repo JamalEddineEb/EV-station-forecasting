@@ -1,30 +1,49 @@
 import numpy as np
 
 
-def level(history, window=96):
-    """Recent mean occupancy per sample (last `window` steps = 1 day at 15 min)."""
-    return history[:, -window:].mean(axis=1)
-
-
-def conformalize(y_val, val_lower, val_upper, test_lower, test_upper, val_history, test_history, coverage=0.8):
-    """Locally scaled split-conformal calibration (CQR), per horizon.
-
-    Typical error size is modelled as a linear function of the recent occupancy level (fitted on
-    validation). Misses are divided by that scale before taking the conformal quantile, and the
-    quantile is multiplied back by each test sample's own scale, so intervals widen when occupancy
-    is higher than during calibration. Native interval models pass their quantile bounds; point
-    forecasters pass lower = upper = forecast.
+def conformalize(
+    y_val,
+    val_lower,
+    val_upper,
+    test_lower,
+    test_upper,
+    val_history=None,
+    test_history=None,
+    coverage=0.80,
+):
     """
-    err = np.abs(y_val - (val_lower + val_upper) / 2).mean(axis=1)
-    slope, intercept = np.polyfit(level(val_history), err, 1)
-    if slope < 0:  # error does not grow with level: fall back to a constant scale
-        slope, intercept = 0.0, err.mean()
-    floor = 0.05 * err.mean()
+    Horizon-wise conformalized quantile regression.
 
-    def scale(history):
-        return np.maximum(intercept + slope * level(history), floor)[:, None]
+    Validation data calibrates the intervals.
+    Test data is used only to construct the final intervals.
 
-    scores = np.maximum(val_lower - y_val, y_val - val_upper) / scale(val_history)
-    n = len(scores)
-    q = np.quantile(scores, min(1.0, np.ceil((n + 1) * coverage) / n), axis=0)
-    return test_lower - q * scale(test_history), test_upper + q * scale(test_history)
+    Arrays have shape (n_samples, horizon).
+    """
+    if not 0 < coverage < 1:
+        raise ValueError("coverage must be between 0 and 1")
+
+    y_val = np.asarray(y_val)
+    val_lower = np.asarray(val_lower)
+    val_upper = np.asarray(val_upper)
+
+    # CQR nonconformity scores, computed separately per horizon.
+    scores = np.maximum(
+        val_lower - y_val,
+        y_val - val_upper,
+    )
+
+    n = scores.shape[0]
+    k = int(np.ceil((n + 1) * coverage))
+
+    if k > n:
+        # Not enough calibration samples for a finite correction
+        # at the requested finite-sample coverage level.
+        q = np.full(scores.shape[1], np.inf)
+    else:
+        # Exact order statistic; avoids quantile interpolation.
+        q = np.partition(scores, k - 1, axis=0)[k - 1, :]
+
+    lower = test_lower - q[None, :]
+    upper = test_upper + q[None, :]
+
+    return lower, upper

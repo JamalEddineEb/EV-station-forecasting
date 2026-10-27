@@ -184,12 +184,13 @@ def evaluate(fn, d, chunk=512, save_path=None):
     def bounds(p):
         return (p[..., 0], p[..., 2]) if p.ndim == 3 else (p, p)
 
+    def median(p):  # point forecast: median for quantile models, direct output otherwise
+        return p[..., 1] if p.ndim == 3 else p
+
     y = d["test_y"]
     val = run(d["val_X_hist"], d["val_X_cal"])
     test = run(d["test_X_hist"], d["test_X_cal"])
-
-    # Point forecast: median for quantile models, direct output otherwise.
-    point = test[..., 1] if test.ndim == 3 else test
+    point = median(test)
 
     # Calibrate prediction intervals using validation data.
     lower, upper = conformalize(
@@ -201,10 +202,13 @@ def evaluate(fn, d, chunk=512, save_path=None):
     )
 
     err = y - point
+    val_err = d["val_y"] - median(val)
 
     out = {
         "mae": float(np.abs(err).mean()),
         "rmse": float(np.sqrt((err ** 2).mean())),
+        "val_mae": float(np.abs(val_err).mean()),
+        "val_rmse": float(np.sqrt((val_err ** 2).mean())),
         "coverage_80": float(np.mean((y >= lower) & (y <= upper))),
         "interval_width": float(np.mean(upper - lower)),
     }
@@ -297,9 +301,10 @@ def run_neural(name, a, d, device):
 
     profiling.reset()
     profiling.tag(name)
-    model = fit(model, loader, val, device, a.epochs, a.patience, a.lr, name)  # instrumented via @profile
+    model, history = fit(model, loader, val, device, a.epochs, a.patience, a.lr, name)  # instrumented via @profile
     fit_rec = profiling.records("fit")[0]
     epoch_s = [t["wall_s"] + v["wall_s"] for t, v in zip(profiling.records("train_epoch"), profiling.records("validate"))]
+    best = min(history, key=lambda r: r["val_loss"])
     training = {
         "total_s": fit_rec["wall_s"],
         "epochs": len(epoch_s),
@@ -308,6 +313,9 @@ def run_neural(name, a, d, device):
         "rss_growth_mib": fit_rec["rss_delta_mib"],
         "peak_gpu_mib": fit_rec.get("gpu_peak_mib"),
         "energy_kwh": fit_rec.get("energy_kwh"),
+        "best_val_loss": best["val_loss"],
+        "best_epoch": best["epoch"],
+        "history": history,  # learning curves: train/val pinball loss per epoch
     }
 
     model = model.cpu().eval()
@@ -386,7 +394,9 @@ def worker_main(a):
     print("[{}] device={} threads={}".format(a.worker, device, a.cpu_threads), flush=True)
     d = load(a.data)
     d["site_name"] = a.site
-    print("[{}] data loaded: {} train examples".format(a.worker, len(d["train_X_hist"])), flush=True)
+
+    print("data loaded: {} train examples: {}".format(
+        a.worker, len(d["train_X_hist"])), flush=True)
     if a.worker in ("dlinear", "gru"):
         models = run_neural(a.worker, a, d, device)
     elif a.worker == "ridge":
@@ -420,22 +430,25 @@ def render(res):
             st["batch_size"], st["inference_batch_size"], st["iterations"], st["warmup"]),
         "- Versions: Python {}, PyTorch {}, scikit-learn {}.".format(hw["python"], hw["torch"], hw["scikit_learn"]),
         "", "## Training efficiency", "",
-        "| Model | Total fit (s) | Epochs | s/epoch | Samples/s | Peak GPU (MiB) | RSS growth (MiB) | Params | Size (MiB) | GFLOPs/sample (analytic) |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Model | Total fit (s) | Epochs | Best val pinball (epoch) | s/epoch | Samples/s | Peak GPU (MiB) | RSS growth (MiB) | Params | Size (MiB) | GFLOPs/sample (analytic) |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for name, m in res["models"].items():
         t = m["training"]
-        L.append("| {} | {} | {} | {} | {} | {} | {} | {:,} | {:.4f} | {:.6f} |".format(
-            name, fmt(t.get("total_s"), ".2f"), fmt(t.get("epochs"), "d"), fmt(t.get("s_per_epoch"), ".3f"),
+        best = "{:.5f} ({})".format(t["best_val_loss"], t["best_epoch"]) if "best_val_loss" in t else "n/a"
+        L.append("| {} | {} | {} | {} | {} | {} | {} | {} | {:,} | {:.4f} | {:.6f} |".format(
+            name, fmt(t.get("total_s"), ".2f"), fmt(t.get("epochs"), "d"), best, fmt(t.get("s_per_epoch"), ".3f"),
             fmt(t.get("samples_per_s"), ".0f"), fmt(t.get("peak_gpu_mib"), ".1f"),
             fmt(t.get("rss_growth_mib"), ".1f"), m["parameters"], m["disk_mib"],
             m["flops_analytic"] / 1e9))
     L += [
         "",
         "Neural fit time includes per-epoch validation and early stopping (first CUDA epoch includes "
-        "warmup). Ridge time is the solver only; feature preparation is in the JSON. RSS growth is the "
-        "process peak minus RSS after data loading (each model runs in its own process). FLOPs are hand-derived "
-        "forward-pass estimates (2 per multiply-add, activations ignored).",
+        "warmup). Validation pinball loss is on the per-window-normalized scale, so it is comparable only "
+        "between neural models of the same run. Per-epoch train/validation curves are in "
+        "benchmark_results.json. Ridge time is the solver only; feature preparation is in the JSON. RSS "
+        "growth is the process peak minus RSS after data loading (each model runs in its own process). "
+        "FLOPs are hand-derived forward-pass estimates (2 per multiply-add, activations ignored).",
         "", "## Inference", "",
         "| Model / runtime | Single p50 (ms) | Single p90 (ms) | Batch | Batch p50 (ms) | Batch p90 (ms) | Samples/s (batch) | RSS (MiB) | GPU peak (+MiB) | Weights (KiB) |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -461,6 +474,17 @@ def render(res):
           "directly (raw coverage); point forecasters have none. All intervals are then calibrated "
           "on the validation set with split-conformal (same as the model comparison). MAE/RMSE use the "
           "median (neural) or point forecast; coverage and width average all test samples and horizons.",]
+    L += ["", "## Validation vs test accuracy", "",
+          "| Model / runtime | Val MAE | Val RMSE | Test MAE | Test RMSE | Test / val MAE |",
+          "|---|---:|---:|---:|---:|---:|"]
+    for name, m in res["models"].items():
+        for rt, r in m["runtimes"].items():
+            acc = r["accuracy"]
+            L.append("| {}/{} | {:.5f} | {:.5f} | {:.5f} | {:.5f} | {:.2f} |".format(
+                name, rt, acc["val_mae"], acc["val_rmse"], acc["mae"], acc["rmse"], acc["mae"] / acc["val_mae"]))
+    L += ["", "Validation is the split used for early stopping and interval calibration; a test/validation "
+          "ratio well above 1 indicates the test period is harder or differently distributed than the "
+          "validation period.", ]
     L += ["", "## Optimizations attempted", ""]
     for name, m in res["models"].items():
         if name in ("dlinear", "gru"):
@@ -475,8 +499,9 @@ def driver_main(a):
     os.makedirs(a.outdir, exist_ok=True)
     argv = []
     for k, v in vars(a).items():
-        if k not in ("worker", "reuse_raw"):
-            argv += ["--" + k.replace("_", "-"), str(v)]
+        if k in ("worker", "reuse_raw") or v is False:
+            continue
+        argv += ["--" + k.replace("_", "-")] + ([] if v is True else [str(v)])  # bare flag for True
     launcher = [sys.executable, "-m", __spec__.name] if __spec__ else [sys.executable, os.path.abspath(__file__)]
     models, hw = {}, None
     for w in WORKERS:

@@ -67,10 +67,13 @@ def make_tensors(hist, cal, y):
 
 @profile("train_epoch")
 def train_epoch(model, loader, opt, loss_fn, device):
-    model.train()
+    """One pass over the training data; returns the mean training loss (running average over the epoch)."""
+    model.train(); total = torch.zeros((), device=device)
     for h,c,y in loader:
         h,c,y = h.to(device),c.to(device),y.to(device)
         opt.zero_grad(); loss=loss_fn(model(h,c),y); loss.backward(); opt.step()
+        total += loss.detach() * len(h)  # stays on device: no per-step sync
+    return total.item() / len(loader.dataset)
 
 
 @profile("validate")
@@ -86,14 +89,19 @@ def validate(model, val_data, device, loss_fn, batch=2048):
 
 @profile("fit")
 def fit(model, loader, val_data, device, epochs, patience, lr, name):
-    """Train with pinball loss and early stopping. Call profiling.tag(name) first to label measurements."""
+    """Train with pinball loss and early stopping; returns (model, history).
+
+    history has one {epoch, train_loss, val_loss} record per epoch (pinball loss on the normalized scale).
+    Call profiling.tag(name) first to label measurements.
+    """
     model.to(device); opt=torch.optim.Adam(model.parameters(),lr=lr); loss_fn=PinballLoss(QUANTILES).to(device)
     val_data=[x.to(device) for x in val_data]
-    best=float("inf"); best_state=None; stale=0
+    best=float("inf"); best_state=None; stale=0; history=[]
     for epoch in range(epochs):
-        train_epoch(model, loader, opt, loss_fn, device)
+        tl = train_epoch(model, loader, opt, loss_fn, device)
         vl = validate(model, val_data, device, loss_fn)
-        print("{} epoch {:02d}: val_pinball={:.6f}".format(name,epoch+1,vl),flush=True)
+        history.append({"epoch": epoch+1, "train_loss": tl, "val_loss": vl})
+        print("{} epoch {:02d}: train_pinball={:.6f} val_pinball={:.6f}".format(name,epoch+1,tl,vl),flush=True)
         if vl<best:
             best=vl; best_state={k:v.detach().cpu().clone() for k,v in model.state_dict().items()}; stale=0
         else: stale+=1
@@ -101,7 +109,7 @@ def fit(model, loader, val_data, device, epochs, patience, lr, name):
     if best_state is None:
         raise RuntimeError("{}: validation loss never improved (NaN/inf?)".format(name))
     model.load_state_dict(best_state)
-    return model
+    return model, history
 
 
 @profile("predict")
@@ -131,7 +139,7 @@ def main():
     p.add_argument("--epochs",type=int,default=30)
     p.add_argument("--patience",type=int,default=5)
     p.add_argument("--batch-size",type=int,default=256)
-    p.add_argument("--lr",type=float,default=1e-3)
+    p.add_argument("--lr",type=float,default=1e-4)
     p.add_argument("--hidden",type=int,default=64)
     p.add_argument("--seed",type=int,default=42)
     p.add_argument("--energy",action="store_true",help="estimate energy with codecarbon (optional)")
@@ -154,7 +162,7 @@ def main():
     models=[("DLinear",DLinear(L,H,C)),("GRU",GRUForecast(a.hidden,C,H))]
     for name,model in models:
         profiling.tag(name)
-        model=fit(model,loader,va,device,a.epochs,a.patience,a.lr,name)
+        model,history=fit(model,loader,va,device,a.epochs,a.patience,a.lr,name)
         vp=predict(model,(va[0],va[1]),device,window_scale(vh)); sp=predict(model,te,device,window_scale(sh))
         out=os.path.join(a.outdir,name.lower()+"_predictions.npz")
         arrays={}
@@ -163,10 +171,13 @@ def main():
         np.savez_compressed(out,y_val=vy,y_test=sy,**{k:v.astype(np.float32) for k,v in arrays.items()})
         ckpt=save_checkpoint(model,name,a.outdir,
                              {"hidden":a.hidden,"seq_len":L,"horizon":H,"calendar_dim":C})
+        verr=vy-vp[...,MID]
         profiling.dump(os.path.join(a.metrics_dir,name.lower()+"_train.json"),prefix=name,extra={
             "model":name,"parameters":sum(q.numel() for q in model.parameters()),
-            "checkpoint_bytes":os.path.getsize(ckpt),"batch_size":a.batch_size,
-            "epochs_run":len(profiling.records("train_epoch")),"device":str(device),"gpu":gpu,
+            "checkpoint_bytes":os.path.getsize(ckpt),"batch_size":a.batch_size,"lr":a.lr,
+            "epochs_run":len(history),"best_val_pinball":min(r["val_loss"] for r in history),
+            "val_mae":float(np.abs(verr).mean()),"val_rmse":float(np.sqrt((verr**2).mean())),
+            "history":history,"device":str(device),"gpu":gpu,
         })
         print("Saved {} ({:.1f}s fit): {}".format(name,profiling.total("fit"),out),flush=True)
 
