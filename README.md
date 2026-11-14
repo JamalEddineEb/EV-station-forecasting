@@ -48,6 +48,12 @@ python -m src.benchmark_models --data outputs/caltech_occupancy_data.npz
 
 The report and JSON measurements are written to `outputs/benchmark/`. The script measures total fit time, epoch time, peak PyTorch GPU memory, process RSS, parameter count, checkpoint size, estimated forward-pass FLOPs, single-sample latency, batched latency/throughput, test-set accuracy, and CPU dynamic-INT8 quantization impact. It measures the available GPU and CPU inference paths, if CUDA is available. ONNX, distillation, and energy results are identified as not measured unless explicitly implemented. Run the command in the intended Python environment and on the target device; hardware contention and software versions affect results.
 
+## Monitoring: data quality
+
+`monitoring_data_quality.ipynb` checks whether the data feeding the forecaster is still healthy. It replays each site's test period week by week (schema, missing data, invalid values, new chargers, drift vs training and vs the last 4 weeks), then repeats the Caltech replay with seven injected problems to show each check catches its problem. Run it after `data_audit.ipynb`; everything is in the notebook and results go to `outputs/monitoring/`.
+
+`monitoring_model_quality.ipynb` checks whether the forecasts are still good. It replays the saved DLinear test forecasts day by day against the Milestone 2 SLOs (rolling 7-day MAE vs seasonal naive, 80% interval coverage, latency and freshness on a mock service log), applies the response policy (page, recalibrate, roll back) and shows a broken release being rolled back automatically. Run it after the benchmark.
+
 ## Saved outputs
 
 - `outputs/figures/`: plots.
