@@ -1,26 +1,31 @@
 """Comprehensive Milestone 3 quantitative robustness benchmark.
 
-Evaluates and compares ALL robustness approaches tried:
-1. Data-Level: Time-series Jittering Augmentation during training (Original vs. Updated Robust Model)
-2. Model-Level: Horizon-Wise Split Conformal Quantile Regression (Raw vs. Calibrated)
-3. Model-Level: Multi-Model Stacking Ensemble (DLinear + Ridge)
-4. Inference-Level: Defensive Input Sanitization (Clean vs. Corrupted with 100% crash recovery)
-5. Inference-Level: Confidence Thresholds & Selective Forecasting (Abstention on high uncertainty)
-6. Model-Level / Deployment: Dynamic INT8 Quantization (Size and latency efficiency)
+Evaluates and compares ALL robustness approaches across Caltech and JPL charging hubs:
+1. Data-Level: Time-series Jittering Augmentation during training (Original vs. Updated Robust Model).
+2. Model-Level: Horizon-Wise Split Conformal Quantile Regression (Raw vs. Calibrated).
+3. Model-Level: Multi-Model Stacking Ensemble (DLinear + Ridge).
+4. Inference-Level: Defensive Input Sanitization (Clean vs. Corrupted with 100% crash recovery).
+5. Inference-Level: Confidence Thresholds & Selective Forecasting (Abstention on high uncertainty).
+6. Model-Level / Deployment: Dynamic INT8 Quantization (Size and latency efficiency).
 
 Outputs:
 - Primary task metrics with 95% bootstrapped confidence intervals across clean and all robustness tests.
-- Single and batch latency (p50/p90), throughput, and memory RSS for original vs updated vs defenses.
-- Memory, VRAM, and model weight footprint matching Milestone 2 reporting style.
+- Single and batch latency (p50/p90), throughput, and memory RSS.
+- Memory, VRAM, and model weight footprint.
 - Curated table of representative failure examples and resolved adaptations.
 
 Usage:
-    python src/benchmark_robustness.py --data outputs/caltech_occupancy_data.npz
+    python src/benchmark_robustness.py --site Caltech
+    python src/benchmark_robustness.py --site JPL
+    python src/benchmark_robustness.py --site all
 """
+
 import argparse
 import io
 import os
+import sys
 import time
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import joblib
 import numpy as np
@@ -29,6 +34,11 @@ import psutil
 import torch
 from torch import nn
 from torch.ao.quantization import quantize_dynamic
+
+# Ensure src is on sys.path
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
 
 from adversarial import FGSMAttack, PGDAttack, RandomPerturbation
 from model_selection.conformal import conformalize
@@ -42,21 +52,46 @@ from models.train_neural import (
 from reliability import InputSanitizer, SelectiveForecaster
 
 
-def rss_mib():
+# =============================================================================
+# HELPER FUNCTIONS: EFFICIENCY, FOOTPRINT, BOOTSTRAP CI
+# =============================================================================
+
+def rss_mib() -> float:
+    """Returns current process Resident Set Size (RSS) in MiB."""
     return psutil.Process().memory_info().rss / (1024 * 1024)
 
 
-def serialized_bytes(model):
+def serialized_bytes(model: nn.Module) -> int:
+    """Returns serialized PyTorch state dictionary size in bytes."""
     buf = io.BytesIO()
     torch.save(model.state_dict(), buf)
     return buf.tell()
 
 
-def bootstrap_ci(metric_fn, y_true, y_pred, n_boot=500, ci=0.95):
-    """Compute bootstrapped 95% confidence interval for a metric."""
+def bootstrap_ci(
+    metric_fn: Callable[[np.ndarray, np.ndarray], float],
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    n_boot: int = 500,
+    ci: float = 0.95,
+    seed: int = 42,
+) -> Tuple[float, float]:
+    """Compute empirical bootstrapped confidence interval for any evaluation metric.
+
+    Args:
+        metric_fn: Callable metric taking (y_true, y_pred) returning float.
+        y_true: Ground truth array.
+        y_pred: Prediction array.
+        n_boot: Number of bootstrap iterations.
+        ci: Confidence level (default 0.95 for 95% CI).
+        seed: Random seed for deterministic reproducibility.
+
+    Returns:
+        (lower_bound, upper_bound) of the confidence interval.
+    """
     n = len(y_true)
-    rng = np.random.default_rng(42)
-    scores = []
+    rng = np.random.default_rng(seed)
+    scores: List[float] = []
     for _ in range(n_boot):
         idx = rng.integers(0, n, size=n)
         scores.append(metric_fn(y_true[idx], y_pred[idx]))
@@ -64,49 +99,149 @@ def bootstrap_ci(metric_fn, y_true, y_pred, n_boot=500, ci=0.95):
     return float(np.percentile(scores, alpha * 100)), float(np.percentile(scores, (1.0 - alpha) * 100))
 
 
-def run_latency_benchmark(fn, hist, cal, warmup=20, iters=150, bs=64):
-    """Measures single and batch latency/throughput following Milestone 2 methodology."""
+def run_latency_benchmark(
+    predict_fn: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    hist: np.ndarray,
+    cal: np.ndarray,
+    warmup: int = 20,
+    iters: int = 150,
+    bs: int = 64,
+) -> Dict[str, float]:
+    """Measures single and batch latency (p50/p90) and hardware throughput.
+
+    Args:
+        predict_fn: Callable inference function (hist, cal) -> predictions.
+        hist: Historical occupancy slice.
+        cal: Calendar features slice.
+        warmup: Number of warmup iterations.
+        iters: Number of benchmark timing iterations.
+        bs: Mini-batch size for batch latency evaluation.
+
+    Returns:
+        Dict with single_p50_ms, single_p90_ms, batch_p50_ms, batch_p90_ms, throughput_sps.
+    """
     span = len(hist) - bs + 1
-    # Batch warmup
+
+    # Batch latency benchmark
     for i in range(warmup):
         s = (i * bs) % span
-        fn(hist[s:s + bs], cal[s:s + bs])
-    # Batch timing
-    latencies = []
+        predict_fn(hist[s:s + bs], cal[s:s + bs])
+
+    batch_latencies: List[float] = []
     t0 = time.perf_counter()
     for i in range(iters):
         s = (i * bs) % span
         t = time.perf_counter()
-        fn(hist[s:s + bs], cal[s:s + bs])
-        latencies.append(time.perf_counter() - t)
+        predict_fn(hist[s:s + bs], cal[s:s + bs])
+        batch_latencies.append(time.perf_counter() - t)
     total_time = time.perf_counter() - t0
-    batch_p50 = float(np.percentile(latencies, 50) * 1000)
-    batch_p90 = float(np.percentile(latencies, 90) * 1000)
     throughput = (iters * bs) / total_time
 
-    # Single-sample warmup & timing
+    # Single-sample latency benchmark
     for i in range(warmup):
         s = i % len(hist)
-        fn(hist[s:s + 1], cal[s:s + 1])
-    single_latencies = []
+        predict_fn(hist[s:s + 1], cal[s:s + 1])
+
+    single_latencies: List[float] = []
     for i in range(iters):
         s = i % len(hist)
         t = time.perf_counter()
-        fn(hist[s:s + 1], cal[s:s + 1])
+        predict_fn(hist[s:s + 1], cal[s:s + 1])
         single_latencies.append(time.perf_counter() - t)
-    single_p50 = float(np.percentile(single_latencies, 50) * 1000)
-    single_p90 = float(np.percentile(single_latencies, 90) * 1000)
 
     return {
-        "single_p50_ms": single_p50,
-        "single_p90_ms": single_p90,
-        "batch_p50_ms": batch_p50,
-        "batch_p90_ms": batch_p90,
+        "single_p50_ms": float(np.percentile(single_latencies, 50) * 1000),
+        "single_p90_ms": float(np.percentile(single_latencies, 90) * 1000),
+        "batch_p50_ms": float(np.percentile(batch_latencies, 50) * 1000),
+        "batch_p90_ms": float(np.percentile(batch_latencies, 90) * 1000),
         "throughput_sps": throughput,
     }
 
 
-def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, ridge_path, site_name="Caltech", save_default=True):
+def evaluate_condition_metrics(
+    condition_name: str,
+    y_true: np.ndarray,
+    point_pred: np.ndarray,
+    raw_lo: Optional[np.ndarray] = None,
+    raw_hi: Optional[np.ndarray] = None,
+    cal_lo: Optional[np.ndarray] = None,
+    cal_hi: Optional[np.ndarray] = None,
+) -> Dict[str, str]:
+    """Helper to compute standard task metrics with bootstrapped 95% CIs.
+
+    Args:
+        condition_name: Display label for the test condition row.
+        y_true: Ground truth target array of shape (N, horizon).
+        point_pred: Median point prediction array of shape (N, horizon).
+        raw_lo: Optional uncalibrated lower quantile array.
+        raw_hi: Optional uncalibrated upper quantile array.
+        cal_lo: Optional conformalized lower quantile array.
+        cal_hi: Optional conformalized upper quantile array.
+
+    Returns:
+        Dict formatted with exact column headers matching benchmark_task_metrics.csv.
+    """
+    mae_fn = lambda yt, yp: float(np.mean(np.abs(yt - yp)))
+    rmse_fn = lambda yt, yp: float(np.sqrt(np.mean((yt - yp) ** 2)))
+
+    mae = mae_fn(y_true, point_pred)
+    mae_ci = bootstrap_ci(mae_fn, y_true, point_pred)
+    rmse = rmse_fn(y_true, point_pred)
+    rmse_ci = bootstrap_ci(rmse_fn, y_true, point_pred)
+
+    acc1 = float(np.mean(np.abs(y_true - point_pred) <= 1.0) * 100.0)
+    acc2 = float(np.mean(np.abs(y_true - point_pred) <= 2.0) * 100.0)
+
+    raw_cov_str = (
+        f"{float(np.mean((y_true >= raw_lo) & (y_true <= raw_hi))):.3f}"
+        if raw_lo is not None and raw_hi is not None
+        else "0.000"
+    )
+
+    if cal_lo is not None and cal_hi is not None:
+        cal_cov_str = f"{float(np.mean((y_true >= cal_lo) & (y_true <= cal_hi))):.3f}"
+        width_str = f"{float(np.mean(cal_hi - cal_lo)):.2f}"
+    elif raw_lo is not None and raw_hi is not None:
+        cal_cov_str = "N/A (Raw)"
+        width_str = f"{float(np.mean(raw_hi - raw_lo)):.2f}"
+    else:
+        cal_cov_str = "0.000"
+        width_str = "N/A"
+
+    return {
+        "Test Condition": condition_name,
+        "MAE [95% CI]": f"{mae:.4f} [{mae_ci[0]:.4f}, {mae_ci[1]:.4f}]",
+        "RMSE [95% CI]": f"{rmse:.4f} [{rmse_ci[0]:.4f}, {rmse_ci[1]:.4f}]",
+        "Acc (<=1 car)": f"{acc1:.1f}%",
+        "Acc (<=2 cars)": f"{acc2:.1f}%",
+        "Raw 80% Cov": raw_cov_str,
+        "Calibrated 80% Cov": cal_cov_str,
+        "Mean Width": width_str,
+    }
+
+
+# =============================================================================
+# SITE BENCHMARK RUNNER
+# =============================================================================
+
+def run_benchmark_for_site(
+    data_path: str,
+    checkpoint_path: str,
+    robust_checkpoint_path: str,
+    ridge_path: str,
+    site_name: str = "Caltech",
+    save_default: bool = True,
+) -> None:
+    """Executes all 4 sections of the Milestone 3 benchmark for a single charging hub.
+
+    Args:
+        data_path: Path to preprocessed station NPZ file.
+        checkpoint_path: Path to baseline FP32 DLinear weights.
+        robust_checkpoint_path: Path to jitter-augmented DLinear weights.
+        ridge_path: Path to Ridge baseline joblib checkpoint.
+        site_name: Charging station display name ('Caltech' or 'JPL').
+        save_default: If True, also save non-suffixed default CSVs.
+    """
     print("\n" + "=" * 95)
     print(f" RUNNING MILESTONE 3 ROBUSTNESS BENCHMARK FOR {site_name.upper()} HUB")
     print("=" * 95)
@@ -115,6 +250,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     print(f"Robust model:      {robust_checkpoint_path}")
     print(f"Ridge model:       {ridge_path}")
 
+    # Load arrays
     data = np.load(data_path)
     th, tc, ty = data["train_X_hist"], data["train_X_cal"], data["train_y"]
     vh, vc, vy = data["val_X_hist"], data["val_X_cal"], data["val_y"]
@@ -126,27 +262,21 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     device = torch.device("cpu")
     max_capacity = 56.0 if "jpl" in data_path.lower() else 54.0
 
-    # 1. Load actual original DLinear neural checkpoint
+    # 1. Load models
     dlinear_base = DLinear(L, H, C)
     cp = torch.load(checkpoint_path, map_location=device)
     dlinear_base.load_state_dict(cp if "seasonal.weight" in cp else cp["state_dict"])
     dlinear_base.eval()
 
-    # 2. Load updated robust DLinear model (trained with jittering)
     if not os.path.exists(robust_checkpoint_path):
-        raise FileNotFoundError(
-            f"Robust checkpoint missing at '{robust_checkpoint_path}'. "
-            "Train and save the jitter-augmented model before running this benchmark."
-        )
+        raise FileNotFoundError(f"Robust checkpoint missing at '{robust_checkpoint_path}'.")
     dlinear_robust = DLinear(L, H, C)
     cp_rob = torch.load(robust_checkpoint_path, map_location=device)
     dlinear_robust.load_state_dict(cp_rob if "seasonal.weight" in cp_rob else cp_rob["state_dict"])
     dlinear_robust.eval()
 
-    # 3. Dynamically Quantized INT8 DLinear
     dlinear_int8 = quantize_dynamic(dlinear_base, {nn.Linear}, dtype=torch.qint8)
 
-    # 4. Load actual Ridge baseline from Milestone 2
     if not os.path.exists(ridge_path):
         raise FileNotFoundError(f"Ridge model checkpoint not found at '{ridge_path}'.")
     ridge_data = joblib.load(ridge_path)
@@ -155,11 +285,10 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     ridge_params = int(ridge_model.coef_.size + ridge_model.intercept_.size)
     ridge_bytes = os.path.getsize(ridge_path)
 
-    # 5. Setup Input Sanitizer
     sanitizer = InputSanitizer(max_capacity=max_capacity, max_rate_per_step=15.0)
 
-    # Inference functions
-    def base_predict(h_arr, c_arr):
+    # 2. Predictive wrappers
+    def base_predict(h_arr: np.ndarray, c_arr: np.ndarray) -> np.ndarray:
         s = window_scale(h_arr)
         h_t = torch.from_numpy((h_arr / s).astype(np.float32)).unsqueeze(-1)
         c_t = torch.from_numpy(c_arr.astype(np.float32))
@@ -167,7 +296,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
             out = dlinear_base(h_t, c_t).numpy()
         return out * s[:, :, None]
 
-    def robust_predict(h_arr, c_arr):
+    def robust_predict(h_arr: np.ndarray, c_arr: np.ndarray) -> np.ndarray:
         s = window_scale(h_arr)
         h_t = torch.from_numpy((h_arr / s).astype(np.float32)).unsqueeze(-1)
         c_t = torch.from_numpy(c_arr.astype(np.float32))
@@ -175,12 +304,12 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
             out = dlinear_robust(h_t, c_t).numpy()
         return out * s[:, :, None]
 
-    def sanitized_predict(h_arr, c_arr):
+    def sanitized_predict(h_arr: np.ndarray, c_arr: np.ndarray) -> np.ndarray:
         clean_h, _ = sanitizer.sanitize_history(h_arr)
         clean_c = sanitizer.sanitize_calendar(c_arr)
         return base_predict(clean_h, clean_c)
 
-    def int8_predict(h_arr, c_arr):
+    def int8_predict(h_arr: np.ndarray, c_arr: np.ndarray) -> np.ndarray:
         s = window_scale(h_arr)
         h_t = torch.from_numpy((h_arr / s).astype(np.float32)).unsqueeze(-1)
         c_t = torch.from_numpy(c_arr.astype(np.float32))
@@ -188,12 +317,12 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
             out = dlinear_int8(h_t, c_t).numpy()
         return out * s[:, :, None]
 
-    def ridge_predict_1d(h_arr, c_arr):
+    def ridge_predict_1d(h_arr: np.ndarray, c_arr: np.ndarray) -> np.ndarray:
         feats = np.concatenate([h_arr, c_arr.reshape(len(c_arr), -1)], axis=1)
         scaled_feats = ridge_scaler.transform(feats)
         return ridge_model.predict(scaled_feats)
 
-    def ensemble_predict_full(h_arr, c_arr):
+    def ensemble_predict_full(h_arr: np.ndarray, c_arr: np.ndarray) -> np.ndarray:
         p_dl = base_predict(h_arr, c_arr)
         p_rd = ridge_predict_1d(h_arr, c_arr)
         pt = 0.5 * (p_dl[..., 1] + p_rd)
@@ -202,14 +331,15 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
         hi = np.minimum(pt + hw, max_capacity)
         return np.stack([lo, pt, hi], axis=-1)
 
+    # -------------------------------------------------------------------------
+    # SECTION 1: INFERENCE LATENCY & THROUGHPUT
+    # -------------------------------------------------------------------------
     print("\n" + "=" * 95)
     print("SECTION 1: INFERENCE LATENCY, THROUGHPUT, AND SYSTEM EFFICIENCY BENCHMARK")
     print("=" * 95)
 
     test_slice_h = vh[:1000]
     test_slice_c = vc[:1000]
-
-    # Real corrupted slice with communication drops
     corrupted_slice_h = test_slice_h.copy()
     corrupted_slice_h[:, -8:] = np.nan
 
@@ -222,8 +352,8 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
         ("DLinear FP32 (Corrupted Input + Sanitizer)", sanitized_predict, corrupted_slice_h, test_slice_c),
     ]
 
-    eff_rows = []
-    measured_rss = {}
+    eff_rows: List[Dict[str, Any]] = []
+    measured_rss: Dict[str, float] = {}
     for label, fn, h_in, c_in in bench_configs:
         m = run_latency_benchmark(fn, h_in, c_in, warmup=20, iters=150, bs=64)
         current_rss = rss_mib()
@@ -237,10 +367,12 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
             "Throughput (samples/s)": round(m["throughput_sps"], 1),
             "Process RSS (MiB)": round(current_rss, 1),
         })
-
     df_eff = pd.DataFrame(eff_rows)
     print(df_eff.to_string(index=False))
 
+    # -------------------------------------------------------------------------
+    # SECTION 2: MEMORY, VRAM, AND MODEL ARTIFACT SIZES
+    # -------------------------------------------------------------------------
     print("\n" + "=" * 95)
     print("SECTION 2: MEMORY, VRAM, AND MODEL ARTIFACT SIZE COMPARISON")
     print("=" * 95)
@@ -271,105 +403,60 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     df_sizes = pd.DataFrame(model_sizes)
     print(df_sizes.to_string(index=False))
 
+    # -------------------------------------------------------------------------
+    # SECTION 3: PRIMARY TASK METRICS ACROSS ROBUSTNESS TIERS
+    # -------------------------------------------------------------------------
     print("\n" + "=" * 95)
     print("SECTION 3: PRIMARY TASK METRICS WITH BOOTSTRAPPED 95% CONFIDENCE INTERVALS")
     print("=" * 95)
 
-    # 1. Validation baseline and Split Conformal calibration for Original Model
     v_out = base_predict(vh, vc)
     s_out = base_predict(sh, sc)
     lo_cal, hi_cal = conformalize(vy, v_out[..., 0], v_out[..., 2], s_out[..., 0], s_out[..., 2])
 
-    # 2. Validation and Split Conformal for Robust Model
     v_rob_out = robust_predict(vh, vc)
     s_rob_out = robust_predict(sh, sc)
     lo_rob_cal, hi_rob_cal = conformalize(vy, v_rob_out[..., 0], v_rob_out[..., 2], s_rob_out[..., 0], s_rob_out[..., 2])
 
     clean_point = s_out[..., 1]
     rob_point = s_rob_out[..., 1]
-    mae_fn = lambda yt, yp: float(np.mean(np.abs(yt - yp)))
-    rmse_fn = lambda yt, yp: float(np.sqrt(np.mean((yt - yp) ** 2)))
-    acc1_fn = lambda yt, yp: float(np.mean(np.abs(yt - yp) <= 1.0) * 100.0)
-    acc2_fn = lambda yt, yp: float(np.mean(np.abs(yt - yp) <= 2.0) * 100.0)
 
-    # Baseline Original Model metrics
-    clean_mae = mae_fn(sy, clean_point)
-    clean_mae_ci = bootstrap_ci(mae_fn, sy, clean_point)
-    clean_rmse = rmse_fn(sy, clean_point)
-    clean_rmse_ci = bootstrap_ci(rmse_fn, sy, clean_point)
-    clean_raw_cov = float(np.mean((sy >= s_out[..., 0]) & (sy <= s_out[..., 2])))
-    clean_cal_cov = float(np.mean((sy >= lo_cal) & (sy <= hi_cal)))
-    clean_width = float(np.mean(hi_cal - lo_cal))
+    task_metrics: List[Dict[str, str]] = []
 
-    # Robust Model metrics
-    rob_mae = mae_fn(sy, rob_point)
-    rob_mae_ci = bootstrap_ci(mae_fn, sy, rob_point)
-    rob_rmse = rmse_fn(sy, rob_point)
-    rob_rmse_ci = bootstrap_ci(rmse_fn, sy, rob_point)
-    rob_raw_cov = float(np.mean((sy >= s_rob_out[..., 0]) & (sy <= s_rob_out[..., 2])))
-    rob_cal_cov = float(np.mean((sy >= lo_rob_cal) & (sy <= hi_rob_cal)))
-    rob_width = float(np.mean(hi_rob_cal - lo_rob_cal))
+    # 1. Clean Original Model (Uncalibrated Raw)
+    task_metrics.append(evaluate_condition_metrics(
+        "Clean: Original Model (Uncalibrated Raw)", sy, clean_point, s_out[..., 0], s_out[..., 2]
+    ))
+    # 2. Clean Original Model (Conformal Split-CQR)
+    task_metrics.append(evaluate_condition_metrics(
+        "Clean: Original Model (Conformal Split-CQR)", sy, clean_point, s_out[..., 0], s_out[..., 2], lo_cal, hi_cal
+    ))
+    # 3. Clean Updated Robust Model (Trained Jittering)
+    task_metrics.append(evaluate_condition_metrics(
+        "Clean: Updated Robust Model (Trained Jittering)", sy, rob_point, s_rob_out[..., 0], s_rob_out[..., 2], lo_rob_cal, hi_rob_cal
+    ))
 
-    task_metrics = [
-        {"Test Condition": "Clean: Original Model (Uncalibrated Raw)",
-         "MAE [95% CI]": f"{clean_mae:.4f} [{clean_mae_ci[0]:.4f}, {clean_mae_ci[1]:.4f}]",
-         "RMSE [95% CI]": f"{clean_rmse:.4f} [{clean_rmse_ci[0]:.4f}, {clean_rmse_ci[1]:.4f}]",
-         "Acc (<=1 car)": f"{acc1_fn(sy, clean_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy, clean_point):.1f}%",
-         "Raw 80% Cov": f"{clean_raw_cov:.3f}", "Calibrated 80% Cov": "N/A (Raw)", "Mean Width": f"{np.mean(s_out[..., 2] - s_out[..., 0]):.2f}"},
-        {"Test Condition": "Clean: Original Model (Conformal Split-CQR)",
-         "MAE [95% CI]": f"{clean_mae:.4f} [{clean_mae_ci[0]:.4f}, {clean_mae_ci[1]:.4f}]",
-         "RMSE [95% CI]": f"{clean_rmse:.4f} [{clean_rmse_ci[0]:.4f}, {clean_rmse_ci[1]:.4f}]",
-         "Acc (<=1 car)": f"{acc1_fn(sy, clean_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy, clean_point):.1f}%",
-         "Raw 80% Cov": f"{clean_raw_cov:.3f}", "Calibrated 80% Cov": f"{clean_cal_cov:.3f}", "Mean Width": f"{clean_width:.2f}"},
-        {"Test Condition": "Clean: Updated Robust Model (Trained Jittering)",
-         "MAE [95% CI]": f"{rob_mae:.4f} [{rob_mae_ci[0]:.4f}, {rob_mae_ci[1]:.4f}]",
-         "RMSE [95% CI]": f"{rob_rmse:.4f} [{rob_rmse_ci[0]:.4f}, {rob_rmse_ci[1]:.4f}]",
-         "Acc (<=1 car)": f"{acc1_fn(sy, rob_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy, rob_point):.1f}%",
-         "Raw 80% Cov": f"{rob_raw_cov:.3f}", "Calibrated 80% Cov": f"{rob_cal_cov:.3f}", "Mean Width": f"{rob_width:.2f}"},
-    ]
-
-    # Stacking Ensemble Clean Evaluation
+    # 4. Clean Stacking Ensemble
     s_ens_clean = ensemble_predict_full(sh, sc)
     v_ens_clean = ensemble_predict_full(vh, vc)
-    ens_clean_pt = s_ens_clean[..., 1]
-    ens_c_mae = mae_fn(sy, ens_clean_pt)
-    ens_c_mae_ci = bootstrap_ci(mae_fn, sy, ens_clean_pt)
-    ens_c_rmse = rmse_fn(sy, ens_clean_pt)
-    ens_c_rmse_ci = bootstrap_ci(rmse_fn, sy, ens_clean_pt)
-    ens_c_raw_cov = float(np.mean((sy >= s_ens_clean[..., 0]) & (sy <= s_ens_clean[..., 2])))
     lo_ens_c, hi_ens_c = conformalize(vy, v_ens_clean[..., 0], v_ens_clean[..., 2], s_ens_clean[..., 0], s_ens_clean[..., 2])
-    ens_c_cal_cov = float(np.mean((sy >= lo_ens_c) & (sy <= hi_ens_c)))
-    ens_c_width = float(np.mean(hi_ens_c - lo_ens_c))
-    task_metrics.append({
-        "Test Condition": "Clean: Stacking Ensemble (DLinear + Ridge)",
-        "MAE [95% CI]": f"{ens_c_mae:.4f} [{ens_c_mae_ci[0]:.4f}, {ens_c_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{ens_c_rmse:.4f} [{ens_c_rmse_ci[0]:.4f}, {ens_c_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy, ens_clean_pt):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy, ens_clean_pt):.1f}%",
-        "Raw 80% Cov": f"{ens_c_raw_cov:.3f}", "Calibrated 80% Cov": f"{ens_c_cal_cov:.3f}", "Mean Width": f"{ens_c_width:.2f}"
-    })
+    task_metrics.append(evaluate_condition_metrics(
+        "Clean: Stacking Ensemble (DLinear + Ridge)", sy, s_ens_clean[..., 1], s_ens_clean[..., 0], s_ens_clean[..., 2], lo_ens_c, hi_ens_c
+    ))
 
-    # Confidence Abstention on Clean Data (90% Retained) via SelectiveForecaster
+    # 5. Clean Confidence Abstention (90% Retained) via SelectiveForecaster
     forecaster = SelectiveForecaster(max_abstention_rate=0.10)
     tau = forecaster.calibrate_threshold(lo_cal, hi_cal, quantile=0.90)
     _, abstained_mask, widths = forecaster.evaluate_abstention(clean_point, lo_cal, hi_cal, threshold=tau)
     retained_mask = ~abstained_mask
-    ret_mae = mae_fn(sy[retained_mask], clean_point[retained_mask])
-    ret_mae_ci = bootstrap_ci(mae_fn, sy[retained_mask], clean_point[retained_mask])
-    ret_rmse = rmse_fn(sy[retained_mask], clean_point[retained_mask])
-    ret_rmse_ci = bootstrap_ci(rmse_fn, sy[retained_mask], clean_point[retained_mask])
-    ret_raw_cov = float(np.mean((sy[retained_mask] >= s_out[retained_mask, :, 0]) & (sy[retained_mask] <= s_out[retained_mask, :, 2])))
-    ret_cal_cov = float(np.mean((sy[retained_mask] >= lo_cal[retained_mask]) & (sy[retained_mask] <= hi_cal[retained_mask])))
-    ret_width = float(np.mean(hi_cal[retained_mask] - lo_cal[retained_mask]))
-    task_metrics.append({
-        "Test Condition": "Clean: Confidence Abstention (90% Retained)",
-        "MAE [95% CI]": f"{ret_mae:.4f} [{ret_mae_ci[0]:.4f}, {ret_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{ret_rmse:.4f} [{ret_rmse_ci[0]:.4f}, {ret_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy[retained_mask], clean_point[retained_mask]):.1f}%",
-        "Acc (<=2 cars)": f"{acc2_fn(sy[retained_mask], clean_point[retained_mask]):.1f}%",
-        "Raw 80% Cov": f"{ret_raw_cov:.3f}", "Calibrated 80% Cov": f"{ret_cal_cov:.3f}", "Mean Width": f"{ret_width:.2f}"
-    })
+    task_metrics.append(evaluate_condition_metrics(
+        "Clean: Confidence Abstention (90% Retained)",
+        sy[retained_mask], clean_point[retained_mask],
+        s_out[retained_mask, :, 0], s_out[retained_mask, :, 2],
+        lo_cal[retained_mask], hi_cal[retained_mask]
+    ))
 
-    # Robustness test: Telemetry Faults without sanitization
+    # 6. Corrupted Telemetry without Sanitizer
     corrupted_sh = sh[:500].copy()
     corrupted_sh[:50, -8:] = np.nan
     try:
@@ -377,7 +464,6 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
         nan_scales = int(np.isnan(raw_scale).sum())
     except Exception:
         nan_scales = 50
-
     task_metrics.append({
         "Test Condition": "Corrupted Telemetry (Without Sanitizer)",
         "MAE [95% CI]": f"FAILED (NaN crash on {nan_scales} windows)",
@@ -386,138 +472,72 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
         "Raw 80% Cov": "0.000", "Calibrated 80% Cov": "0.000", "Mean Width": "N/A"
     })
 
-    # Robustness test: Telemetry Faults with InputSanitizer
+    # 7. Corrupted Telemetry with InputSanitizer
     sy_sub = sy[:500]
     san_pred = sanitized_predict(corrupted_sh, sc[:500])
-    san_point = san_pred[..., 1]
-    san_mae = mae_fn(sy_sub, san_point)
-    san_mae_ci = bootstrap_ci(mae_fn, sy_sub, san_point)
-    san_rmse = rmse_fn(sy_sub, san_point)
-    san_rmse_ci = bootstrap_ci(rmse_fn, sy_sub, san_point)
-    san_raw_cov = float(np.mean((sy_sub >= san_pred[..., 0]) & (sy_sub <= san_pred[..., 2])))
     san_lo, san_hi = conformalize(vy, v_out[..., 0], v_out[..., 2], san_pred[..., 0], san_pred[..., 2])
-    san_cal_cov = float(np.mean((sy_sub >= san_lo) & (sy_sub <= san_hi)))
-    san_width = float(np.mean(san_hi - san_lo))
-    task_metrics.append({
-        "Test Condition": "Corrupted Telemetry (With InputSanitizer)",
-        "MAE [95% CI]": f"{san_mae:.4f} [{san_mae_ci[0]:.4f}, {san_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{san_rmse:.4f} [{san_rmse_ci[0]:.4f}, {san_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy_sub, san_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy_sub, san_point):.1f}%",
-        "Raw 80% Cov": f"{san_raw_cov:.3f}", "Calibrated 80% Cov": f"{san_cal_cov:.3f}", "Mean Width": f"{san_width:.2f}"
-    })
+    task_metrics.append(evaluate_condition_metrics(
+        "Corrupted Telemetry (With InputSanitizer)", sy_sub, san_pred[..., 1], san_pred[..., 0], san_pred[..., 2], san_lo, san_hi
+    ))
 
-    # Robustness test: Random Noise eps=1.0 car on Original Model
+    # 8. Random Bounded Noise eps=1.0 car on Original Defenseless Model
     scale_sub = window_scale(sh[:500])
     h_sub, c_sub = make_tensors(sh[:500], sc[:500], None)
     rand_atk = RandomPerturbation(max_capacity)
     h_rand = rand_atk.generate(dlinear_base, h_sub, c_sub, None, scale_sub, 1.0)
     with torch.no_grad():
         rand_pred = dlinear_base(h_rand, c_sub).numpy() * scale_sub[:, :, None]
-    rand_point = rand_pred[..., 1]
-    rand_mae = mae_fn(sy_sub, rand_point)
-    rand_mae_ci = bootstrap_ci(mae_fn, sy_sub, rand_point)
-    rand_rmse = rmse_fn(sy_sub, rand_point)
-    rand_rmse_ci = bootstrap_ci(rmse_fn, sy_sub, rand_point)
-    rand_raw_cov = float(np.mean((sy_sub >= rand_pred[..., 0]) & (sy_sub <= rand_pred[..., 2])))
     rand_lo, rand_hi = conformalize(vy, v_out[..., 0], v_out[..., 2], rand_pred[..., 0], rand_pred[..., 2])
-    rand_cal_cov = float(np.mean((sy_sub >= rand_lo) & (sy_sub <= rand_hi)))
-    rand_width = float(np.mean(rand_hi - rand_lo))
-    task_metrics.append({
-        "Test Condition": "Random Bounded Noise (eps=1.0 car) [Original Defenseless]",
-        "MAE [95% CI]": f"{rand_mae:.4f} [{rand_mae_ci[0]:.4f}, {rand_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{rand_rmse:.4f} [{rand_rmse_ci[0]:.4f}, {rand_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy_sub, rand_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy_sub, rand_point):.1f}%",
-        "Raw 80% Cov": f"{rand_raw_cov:.3f}", "Calibrated 80% Cov": f"{rand_cal_cov:.3f}", "Mean Width": f"{rand_width:.2f}"
-    })
+    task_metrics.append(evaluate_condition_metrics(
+        "Random Bounded Noise (eps=1.0 car) [Original Defenseless]",
+        sy_sub, rand_pred[..., 1], rand_pred[..., 0], rand_pred[..., 2], rand_lo, rand_hi
+    ))
 
-    # Robustness test: Random Noise eps=1.0 car on Updated Robust Model (Trained with Jittering)
+    # 9. Random Bounded Noise eps=1.0 car on Updated Robust Model
     with torch.no_grad():
         rand_rob_pred = dlinear_robust(h_rand, c_sub).numpy() * scale_sub[:, :, None]
-    rand_rob_point = rand_rob_pred[..., 1]
-    rand_rob_mae = mae_fn(sy_sub, rand_rob_point)
-    rand_rob_mae_ci = bootstrap_ci(mae_fn, sy_sub, rand_rob_point)
-    rand_rob_rmse = rmse_fn(sy_sub, rand_rob_point)
-    rand_rob_rmse_ci = bootstrap_ci(rmse_fn, sy_sub, rand_rob_point)
-    rand_rob_raw_cov = float(np.mean((sy_sub >= rand_rob_pred[..., 0]) & (sy_sub <= rand_rob_pred[..., 2])))
     rand_rob_lo, rand_rob_hi = conformalize(vy, v_rob_out[..., 0], v_rob_out[..., 2], rand_rob_pred[..., 0], rand_rob_pred[..., 2])
-    rand_rob_cal_cov = float(np.mean((sy_sub >= rand_rob_lo) & (sy_sub <= rand_rob_hi)))
-    rand_rob_width = float(np.mean(rand_rob_hi - rand_rob_lo))
-    task_metrics.append({
-        "Test Condition": "Random Bounded Noise (eps=1.0 car) [Updated Robust Model]",
-        "MAE [95% CI]": f"{rand_rob_mae:.4f} [{rand_rob_mae_ci[0]:.4f}, {rand_rob_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{rand_rob_rmse:.4f} [{rand_rob_rmse_ci[0]:.4f}, {rand_rob_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy_sub, rand_rob_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy_sub, rand_rob_point):.1f}%",
-        "Raw 80% Cov": f"{rand_rob_raw_cov:.3f}", "Calibrated 80% Cov": f"{rand_rob_cal_cov:.3f}", "Mean Width": f"{rand_rob_width:.2f}"
-    })
+    task_metrics.append(evaluate_condition_metrics(
+        "Random Bounded Noise (eps=1.0 car) [Updated Robust Model]",
+        sy_sub, rand_rob_pred[..., 1], rand_rob_pred[..., 0], rand_rob_pred[..., 2], rand_rob_lo, rand_rob_hi
+    ))
 
-    # Robustness test: White-Box FGSM eps=1.0 car
+    # 10. White-Box FGSM eps=1.0 car
     loss_fn = PinballLoss(QUANTILES)
     fgsm_atk = FGSMAttack(loss_fn, max_capacity)
     y_norm_sub = torch.from_numpy((sy_sub / scale_sub).astype(np.float32))
     h_fgsm = fgsm_atk.generate(dlinear_base, h_sub, c_sub, y_norm_sub, scale_sub, 1.0)
     with torch.no_grad():
         fgsm_pred = dlinear_base(h_fgsm, c_sub).numpy() * scale_sub[:, :, None]
-    fgsm_point = fgsm_pred[..., 1]
-    fgsm_mae = mae_fn(sy_sub, fgsm_point)
-    fgsm_mae_ci = bootstrap_ci(mae_fn, sy_sub, fgsm_point)
-    fgsm_rmse = rmse_fn(sy_sub, fgsm_point)
-    fgsm_rmse_ci = bootstrap_ci(rmse_fn, sy_sub, fgsm_point)
-    fgsm_raw_cov = float(np.mean((sy_sub >= fgsm_pred[..., 0]) & (sy_sub <= fgsm_pred[..., 2])))
     fgsm_lo, fgsm_hi = conformalize(vy, v_out[..., 0], v_out[..., 2], fgsm_pred[..., 0], fgsm_pred[..., 2])
-    fgsm_cal_cov = float(np.mean((sy_sub >= fgsm_lo) & (sy_sub <= fgsm_hi)))
-    fgsm_width = float(np.mean(fgsm_hi - fgsm_lo))
-    task_metrics.append({
-        "Test Condition": "White-Box FGSM Attack (eps=1.0 car)",
-        "MAE [95% CI]": f"{fgsm_mae:.4f} [{fgsm_mae_ci[0]:.4f}, {fgsm_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{fgsm_rmse:.4f} [{fgsm_rmse_ci[0]:.4f}, {fgsm_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy_sub, fgsm_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy_sub, fgsm_point):.1f}%",
-        "Raw 80% Cov": f"{fgsm_raw_cov:.3f}", "Calibrated 80% Cov": f"{fgsm_cal_cov:.3f}", "Mean Width": f"{fgsm_width:.2f}"
-    })
+    task_metrics.append(evaluate_condition_metrics(
+        "White-Box FGSM Attack (eps=1.0 car)",
+        sy_sub, fgsm_pred[..., 1], fgsm_pred[..., 0], fgsm_pred[..., 2], fgsm_lo, fgsm_hi
+    ))
 
-    # Robustness test: White-Box PGD-7 on Original Model Defenseless
+    # 11. White-Box PGD-7 on Original Model Defenseless
     pgd_atk = PGDAttack(loss_fn, steps=7, max_capacity=max_capacity)
     h_pgd = pgd_atk.generate(dlinear_base, h_sub, c_sub, y_norm_sub, scale_sub, 1.0)
     with torch.no_grad():
         pgd_pred = dlinear_base(h_pgd, c_sub).numpy() * scale_sub[:, :, None]
     pgd_point = pgd_pred[..., 1]
-    pgd_mae = mae_fn(sy_sub, pgd_point)
-    pgd_mae_ci = bootstrap_ci(mae_fn, sy_sub, pgd_point)
-    pgd_rmse = rmse_fn(sy_sub, pgd_point)
-    pgd_rmse_ci = bootstrap_ci(rmse_fn, sy_sub, pgd_point)
-    pgd_raw_cov = float(np.mean((sy_sub >= pgd_pred[..., 0]) & (sy_sub <= pgd_pred[..., 2])))
     pgd_lo, pgd_hi = conformalize(vy, v_out[..., 0], v_out[..., 2], pgd_pred[..., 0], pgd_pred[..., 2])
-    pgd_cal_cov = float(np.mean((sy_sub >= pgd_lo) & (sy_sub <= pgd_hi)))
-    pgd_width = float(np.mean(pgd_hi - pgd_lo))
-    task_metrics.append({
-        "Test Condition": "White-Box PGD-7 (eps=1.0 car) [Original Model Defenseless]",
-        "MAE [95% CI]": f"{pgd_mae:.4f} [{pgd_mae_ci[0]:.4f}, {pgd_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{pgd_rmse:.4f} [{pgd_rmse_ci[0]:.4f}, {pgd_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy_sub, pgd_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy_sub, pgd_point):.1f}%",
-        "Raw 80% Cov": f"{pgd_raw_cov:.3f}", "Calibrated 80% Cov": f"{pgd_cal_cov:.3f}", "Mean Width": f"{pgd_width:.2f}"
-    })
+    task_metrics.append(evaluate_condition_metrics(
+        "White-Box PGD-7 (eps=1.0 car) [Original Model Defenseless]",
+        sy_sub, pgd_point, pgd_pred[..., 0], pgd_pred[..., 2], pgd_lo, pgd_hi
+    ))
 
-    # Robustness test: White-Box PGD-7 on Updated Robust Model (Trained with Jittering)
+    # 12. White-Box PGD-7 on Updated Robust Model
     h_pgd_rob = pgd_atk.generate(dlinear_robust, h_sub, c_sub, y_norm_sub, scale_sub, 1.0)
     with torch.no_grad():
         pgd_rob_pred = dlinear_robust(h_pgd_rob, c_sub).numpy() * scale_sub[:, :, None]
-    pgd_rob_point = pgd_rob_pred[..., 1]
-    pgd_rob_mae = mae_fn(sy_sub, pgd_rob_point)
-    pgd_rob_mae_ci = bootstrap_ci(mae_fn, sy_sub, pgd_rob_point)
-    pgd_rob_rmse = rmse_fn(sy_sub, pgd_rob_point)
-    pgd_rob_rmse_ci = bootstrap_ci(rmse_fn, sy_sub, pgd_rob_point)
-    pgd_rob_raw_cov = float(np.mean((sy_sub >= pgd_rob_pred[..., 0]) & (sy_sub <= pgd_rob_pred[..., 2])))
     pgd_rob_lo, pgd_rob_hi = conformalize(vy, v_rob_out[..., 0], v_rob_out[..., 2], pgd_rob_pred[..., 0], pgd_rob_pred[..., 2])
-    pgd_rob_cal_cov = float(np.mean((sy_sub >= pgd_rob_lo) & (sy_sub <= pgd_rob_hi)))
-    pgd_rob_width = float(np.mean(pgd_rob_hi - pgd_rob_lo))
-    task_metrics.append({
-        "Test Condition": "White-Box PGD-7 (eps=1.0 car) [Updated Robust Model]",
-        "MAE [95% CI]": f"{pgd_rob_mae:.4f} [{pgd_rob_mae_ci[0]:.4f}, {pgd_rob_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{pgd_rob_rmse:.4f} [{pgd_rob_rmse_ci[0]:.4f}, {pgd_rob_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy_sub, pgd_rob_point):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy_sub, pgd_rob_point):.1f}%",
-        "Raw 80% Cov": f"{pgd_rob_raw_cov:.3f}", "Calibrated 80% Cov": f"{pgd_rob_cal_cov:.3f}", "Mean Width": f"{pgd_rob_width:.2f}"
-    })
+    task_metrics.append(evaluate_condition_metrics(
+        "White-Box PGD-7 (eps=1.0 car) [Updated Robust Model]",
+        sy_sub, pgd_rob_pred[..., 1], pgd_rob_pred[..., 0], pgd_rob_pred[..., 2], pgd_rob_lo, pgd_rob_hi
+    ))
 
-    # Robustness test: White-Box PGD-7 with Stacking Ensemble Defense
+    # 13. White-Box PGD-7 with Stacking Ensemble Defense
     adv_phys = (h_pgd.squeeze(-1).numpy() * scale_sub)
     ridge_adv = ridge_predict_1d(adv_phys, sc[:500])
     ens_pgd_pt = 0.5 * (pgd_point + ridge_adv)
@@ -530,47 +550,27 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     v_ens_hw = 0.5 * (v_out[..., 2] - v_out[..., 0])
     v_ens_lo = np.maximum(v_ens_pt - v_ens_hw, 0.0)
     v_ens_hi = np.minimum(v_ens_pt + v_ens_hw, max_capacity)
-
-    ens_mae = mae_fn(sy_sub, ens_pgd_pt)
-    ens_mae_ci = bootstrap_ci(mae_fn, sy_sub, ens_pgd_pt)
-    ens_rmse = rmse_fn(sy_sub, ens_pgd_pt)
-    ens_rmse_ci = bootstrap_ci(rmse_fn, sy_sub, ens_pgd_pt)
-    ens_raw_cov = float(np.mean((sy_sub >= ens_pgd_lo) & (sy_sub <= ens_pgd_hi)))
     ens_lo_cal, ens_hi_cal = conformalize(vy, v_ens_lo, v_ens_hi, ens_pgd_lo, ens_pgd_hi)
-    ens_cal_cov = float(np.mean((sy_sub >= ens_lo_cal) & (sy_sub <= ens_hi_cal)))
-    ens_width = float(np.mean(ens_hi_cal - ens_lo_cal))
-    task_metrics.append({
-        "Test Condition": "White-Box PGD-7 Attack [With Stacking Ensemble Defense]",
-        "MAE [95% CI]": f"{ens_mae:.4f} [{ens_mae_ci[0]:.4f}, {ens_mae_ci[1]:.4f}]",
-        "RMSE [95% CI]": f"{ens_rmse:.4f} [{ens_rmse_ci[0]:.4f}, {ens_rmse_ci[1]:.4f}]",
-        "Acc (<=1 car)": f"{acc1_fn(sy_sub, ens_pgd_pt):.1f}%", "Acc (<=2 cars)": f"{acc2_fn(sy_sub, ens_pgd_pt):.1f}%",
-        "Raw 80% Cov": f"{ens_raw_cov:.3f}", "Calibrated 80% Cov": f"{ens_cal_cov:.3f}", "Mean Width": f"{ens_width:.2f}"
-    })
 
-    # Robustness test: Confidence Abstention under PGD-7 Attack via SelectiveForecaster
-    _, pgd_abstained, pgd_widths = forecaster.evaluate_abstention(pgd_point, pgd_lo, pgd_hi, threshold=tau)
+    task_metrics.append(evaluate_condition_metrics(
+        "White-Box PGD-7 Attack [With Stacking Ensemble Defense]",
+        sy_sub, ens_pgd_pt, ens_pgd_lo, ens_pgd_hi, ens_lo_cal, ens_hi_cal
+    ))
+
+    # 14. Confidence Abstention under PGD-7 Attack via SelectiveForecaster
+    _, pgd_abstained, _ = forecaster.evaluate_abstention(pgd_point, pgd_lo, pgd_hi, threshold=tau)
     pgd_retained = ~pgd_abstained
-    if np.sum(pgd_retained) > 0:
-        pgd_ret_mae = mae_fn(sy_sub[pgd_retained], pgd_point[pgd_retained])
-        pgd_ret_mae_ci = bootstrap_ci(mae_fn, sy_sub[pgd_retained], pgd_point[pgd_retained])
-        pgd_ret_rmse = rmse_fn(sy_sub[pgd_retained], pgd_point[pgd_retained])
-        pgd_ret_rmse_ci = bootstrap_ci(rmse_fn, sy_sub[pgd_retained], pgd_point[pgd_retained])
-        pgd_ret_raw_cov = float(np.mean((sy_sub[pgd_retained] >= pgd_pred[pgd_retained, :, 0]) & (sy_sub[pgd_retained] <= pgd_pred[pgd_retained, :, 2])))
-        pgd_ret_cal_cov = float(np.mean((sy_sub[pgd_retained] >= pgd_lo[pgd_retained]) & (sy_sub[pgd_retained] <= pgd_hi[pgd_retained])))
-        pgd_ret_width = float(np.mean(pgd_hi[pgd_retained] - pgd_lo[pgd_retained]))
-        task_metrics.append({
-            "Test Condition": "White-Box PGD-7 Attack [With Confidence Abstention]",
-            "MAE [95% CI]": f"{pgd_ret_mae:.4f} [{pgd_ret_mae_ci[0]:.4f}, {pgd_ret_mae_ci[1]:.4f}]",
-            "RMSE [95% CI]": f"{pgd_ret_rmse:.4f} [{pgd_ret_rmse_ci[0]:.4f}, {pgd_ret_rmse_ci[1]:.4f}]",
-            "Acc (<=1 car)": f"{acc1_fn(sy_sub[pgd_retained], pgd_point[pgd_retained]):.1f}%",
-            "Acc (<=2 cars)": f"{acc2_fn(sy_sub[pgd_retained], pgd_point[pgd_retained]):.1f}%",
-            "Raw 80% Cov": f"{pgd_ret_raw_cov:.3f}", "Calibrated 80% Cov": f"{pgd_ret_cal_cov:.3f}", "Mean Width": f"{pgd_ret_width:.2f}"
-        })
+    task_metrics.append(evaluate_condition_metrics(
+        "White-Box PGD-7 Attack [With Confidence Abstention]",
+        sy_sub[pgd_retained], pgd_point[pgd_retained],
+        pgd_pred[pgd_retained, :, 0], pgd_pred[pgd_retained, :, 2],
+        pgd_lo[pgd_retained], pgd_hi[pgd_retained]
+    ))
 
     df_task = pd.DataFrame(task_metrics)
     print(df_task.to_string(index=False))
 
-    # Export tables for analysis
+    # Export tables
     os.makedirs("outputs/tables", exist_ok=True)
     site_tag = site_name.lower()
     df_task.to_csv(f"outputs/tables/benchmark_task_metrics_{site_tag}.csv", index=False)
@@ -581,29 +581,29 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
         df_eff.to_csv("outputs/tables/benchmark_latency.csv", index=False)
         df_sizes.to_csv("outputs/tables/benchmark_model_sizes.csv", index=False)
 
+    # -------------------------------------------------------------------------
+    # SECTION 4: CURATED FAILURE AND RESOLVED ADAPTATION CASES
+    # -------------------------------------------------------------------------
     print("\n" + "=" * 95)
     print("SECTION 4: CURATED TABLE OF REPRESENTATIVE FAILURE & RESOLVED ADAPTATION EXAMPLES")
     print("=" * 95)
 
     sample_maes = np.mean(np.abs(sy - clean_point), axis=1)
-
     sorted_err_idx = np.argsort(sample_maes)[::-1]
-    distinct_err_indices = []
+    distinct_err_indices: List[int] = []
     for idx in sorted_err_idx:
         if all(abs(idx - prev) > 96 for prev in distinct_err_indices):
             distinct_err_indices.append(idx)
         if len(distinct_err_indices) >= 5:
             break
 
-    curated_cases = []
+    curated_cases: List[Dict[str, Any]] = []
 
     # Failure Case 1: Monday Morning Arrival Surge
     idx1 = distinct_err_indices[0]
     ts1 = str(timestamps[test_origins[idx1]]) if timestamps is not None else f"Sample {idx1}"
     curated_cases.append({
-        "Case ID": "Case 1",
-        "Case Type": "Clean Test Failure",
-        "Timestamp": ts1,
+        "Case ID": "Case 1", "Case Type": "Clean Test Failure", "Timestamp": ts1,
         "Input Context / Scenario": "Monday morning arrival surge after quiet weekend; recent 4h mean occupancy < 1.5 cars.",
         "Expected Mean (Cars)": round(float(np.mean(sy[idx1])), 2),
         "Predicted Mean (Cars)": round(float(np.mean(clean_point[idx1])), 2),
@@ -614,13 +614,11 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
         "Mitigation Idea & Adaptation Status": "UNMITIGATED BASELINE: Incorporate real-time arrival momentum features or asymmetric penalty for under-forecasting.",
     })
 
-    # Failure Case 2: Post-Holiday Demand Rebound
+    # Failure Case 2: Tuesday Morning Arrival Surge (Post-Holiday)
     idx2 = distinct_err_indices[1]
     ts2 = str(timestamps[test_origins[idx2]]) if timestamps is not None else f"Sample {idx2}"
     curated_cases.append({
-        "Case ID": "Case 2",
-        "Case Type": "Clean Test Failure",
-        "Timestamp": ts2,
+        "Case ID": "Case 2", "Case Type": "Clean Test Failure", "Timestamp": ts2,
         "Input Context / Scenario": "Tuesday morning arrival surge immediately following Labor Day long weekend.",
         "Expected Mean (Cars)": round(float(np.mean(sy[idx2])), 2),
         "Predicted Mean (Cars)": round(float(np.mean(clean_point[idx2])), 2),
@@ -635,9 +633,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     idx3 = distinct_err_indices[2]
     ts3 = str(timestamps[test_origins[idx3]]) if timestamps is not None else f"Sample {idx3}"
     curated_cases.append({
-        "Case ID": "Case 3",
-        "Case Type": "Clean Test Failure",
-        "Timestamp": ts3,
+        "Case ID": "Case 3", "Case Type": "Clean Test Failure", "Timestamp": ts3,
         "Input Context / Scenario": "Midweek morning occupancy surges to ~10 cars despite recent 4h mean of 0.12 cars.",
         "Expected Mean (Cars)": round(float(np.mean(sy[idx3])), 2),
         "Predicted Mean (Cars)": round(float(np.mean(clean_point[idx3])), 2),
@@ -653,9 +649,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     idx4 = hol_candidates[0] if len(hol_candidates) > 0 else distinct_err_indices[3]
     ts4 = str(timestamps[test_origins[idx4]]) if timestamps is not None else f"Sample {idx4}"
     curated_cases.append({
-        "Case ID": "Case 4",
-        "Case Type": "Clean Test Failure",
-        "Timestamp": ts4,
+        "Case ID": "Case 4", "Case Type": "Clean Test Failure", "Timestamp": ts4,
         "Input Context / Scenario": "Labor Day federal holiday morning; campus is closed but day-of-week feature indicates Monday.",
         "Expected Mean (Cars)": round(float(np.mean(sy[idx4])), 2),
         "Predicted Mean (Cars)": round(float(np.mean(clean_point[idx4])), 2),
@@ -671,9 +665,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     idx5 = early_dep[0] if len(early_dep) > 0 else distinct_err_indices[4]
     ts5 = str(timestamps[test_origins[idx5]]) if timestamps is not None else f"Sample {idx5}"
     curated_cases.append({
-        "Case ID": "Case 5",
-        "Case Type": "Clean Test Failure",
-        "Timestamp": ts5,
+        "Case ID": "Case 5", "Case Type": "Clean Test Failure", "Timestamp": ts5,
         "Input Context / Scenario": "Mid-summer Friday afternoon where campus researchers departed earlier than standard term schedule.",
         "Expected Mean (Cars)": round(float(np.mean(sy[idx5])), 2),
         "Predicted Mean (Cars)": round(float(np.mean(clean_point[idx5])), 2),
@@ -686,8 +678,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
 
     # Failure Case 6: White-Box PGD-7 Adversarial Perturbation
     curated_cases.append({
-        "Case ID": "Case 6",
-        "Case Type": "Adversarial Failure",
+        "Case ID": "Case 6", "Case Type": "Adversarial Failure",
         "Timestamp": "Test Sample 100 under PGD-7 (eps=1.0 car)",
         "Input Context / Scenario": "Worst-case L_inf gradient perturbation (+/- 1.0 car) crafted via 7-step PGD on pinball loss.",
         "Expected Mean (Cars)": round(float(np.mean(sy[100])), 2),
@@ -699,7 +690,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
         "Mitigation Idea & Adaptation Status": "ADAPTATION: Input median filtering removes high-frequency adversarial jitter; Stacking Ensemble anchors predictions.",
     })
 
-    # Resolved Adaptation Case 1: Model-Level Adaptation (Robust Jitter-Trained Model vs Baseline)
+    # Resolved Adaptation Case 1: Model-Level Robust Jitter-Trained Model vs Baseline
     is_jpl = "jpl" in data_path.lower()
     sample_rob = 51 if is_jpl else 3548
     ts_rob = str(timestamps[test_origins[sample_rob]]) if timestamps is not None else f"Sample {sample_rob}"
@@ -708,7 +699,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     with torch.no_grad():
         rob_res = np.maximum(dlinear_robust(h_r, c_r).numpy() * s_rob[:, :, None], 0.0)
         base_res = np.maximum(dlinear_base(h_r, c_r).numpy() * s_rob[:, :, None], 0.0)
-    
+
     mae_b_case = float(np.mean(np.abs(sy[sample_rob] - base_res[0, :, 1])))
     mae_r_case = float(np.mean(np.abs(sy[sample_rob] - rob_res[0, :, 1])))
     cov_b_case = float(np.mean((sy[sample_rob] >= base_res[0, :, 0]) & (sy[sample_rob] <= base_res[0, :, 2])))
@@ -716,9 +707,7 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     err_reduct_case = ((mae_b_case - mae_r_case) / mae_b_case) * 100.0 if mae_b_case > 0 else 0.0
 
     curated_cases.append({
-        "Case ID": "Case 7 [RESOLVED]",
-        "Case Type": "Resolved Adaptation",
-        "Timestamp": ts_rob,
+        "Case ID": "Case 7 [RESOLVED]", "Case Type": "Resolved Adaptation", "Timestamp": ts_rob,
         "Input Context / Scenario": f"High daytime occupancy plateau ({round(float(np.mean(sy[sample_rob])), 1)} cars); unmitigated baseline exhibits severe lag and oscillation.",
         "Expected Mean (Cars)": round(float(np.mean(sy[sample_rob])), 2),
         "Predicted Mean (Cars)": round(float(np.mean(rob_res[0, :, 1])), 2),
@@ -733,17 +722,15 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     high_u_idx = int(np.argmax(widths))
     ts_u = str(timestamps[test_origins[high_u_idx]]) if timestamps is not None else f"Sample {high_u_idx}"
     curated_cases.append({
-        "Case ID": "Case 8 [RESOLVED]",
-        "Case Type": "Resolved Adaptation",
-        "Timestamp": ts_u,
+        "Case ID": "Case 8 [RESOLVED]", "Case Type": "Resolved Adaptation", "Timestamp": ts_u,
         "Input Context / Scenario": "Severe demand volatility during stormy afternoon; unmitigated baseline MAE = 4.15 cars.",
         "Expected Mean (Cars)": round(float(np.mean(sy[high_u_idx])), 2),
         "Predicted Mean (Cars)": round(float(np.mean(clean_point[high_u_idx])), 2),
         "80% Confidence Interval": f"[{np.mean(s_out[high_u_idx, :, 0]):.2f}, {np.mean(s_out[high_u_idx, :, 2]):.2f}]",
         "Interval Width (W)": round(float(widths[high_u_idx]), 2),
         "MAE (Cars)": round(float(sample_maes[high_u_idx]), 2),
-        "Why It Failed (Root Cause Analysis)": "Conflicting seasonal and trend signals inflated interval width to W = 11.06 cars, indicating high epistemic risk.",
-        "Mitigation Idea & Adaptation Status": "RESOLVED: SelectiveForecaster detects W > tau (4.78 cars) and abstains from automated control, alerting grid operator.",
+        "Why It Failed (Root Cause Analysis)": f"Conflicting seasonal and trend signals inflated interval width to W = {widths[high_u_idx]:.2f} cars, indicating high epistemic risk.",
+        "Mitigation Idea & Adaptation Status": f"RESOLVED: SelectiveForecaster detects W > tau ({tau:.2f} cars) and abstains from automated control, alerting grid operator.",
     })
 
     # Resolved Adaptation Case 3: Horizon-1 Near-Term Lag Reduced via Stacking Ensemble
@@ -751,18 +738,19 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     rd_all_1d = ridge_predict_1d(sh, sc)
     ens_all_pt = 0.5 * (clean_point + rd_all_1d)
     h1_err_ens = float(np.mean(np.abs(sy[:, 0] - ens_all_pt[:, 0])))
+    h1_reduct = ((h1_err_dl - h1_err_ens) / h1_err_dl) * 100.0 if h1_err_dl > 0 else 0.0
+
     curated_cases.append({
-        "Case ID": "Case 9 [RESOLVED]",
-        "Case Type": "Resolved Adaptation",
+        "Case ID": "Case 9 [RESOLVED]", "Case Type": "Resolved Adaptation",
         "Timestamp": "All Test Sequences (Horizon 1, 15m ahead)",
-        "Input Context / Scenario": "Short-term persistence evaluation across all 12,102 test sequences.",
+        "Input Context / Scenario": f"Short-term persistence evaluation across all {len(sy):,} test sequences.",
         "Expected Mean (Cars)": round(float(np.mean(sy[:, 0])), 2),
         "Predicted Mean (Cars)": round(float(np.mean(ens_all_pt[:, 0])), 2),
         "80% Confidence Interval": f"[{round(float(np.mean(s_out[:, 0, 0])), 2)}, {round(float(np.mean(s_out[:, 0, 2])), 2)}]",
         "Interval Width (W)": round(float(np.mean(s_out[:, 0, 2] - s_out[:, 0, 0])), 2),
         "MAE (Cars)": round(h1_err_ens, 3),
-        "Why It Failed (Root Cause Analysis)": "DLinear's moving-average trend pooling exhibits slight lag on the immediate next 15-minute timestep (MAE = 0.421).",
-        "Mitigation Idea & Adaptation Status": "RESOLVED: Stacking Ensemble leverages Ridge's direct weight on step t, reducing Horizon-1 error from 0.421 to 0.364.",
+        "Why It Failed (Root Cause Analysis)": f"DLinear's moving-average trend pooling exhibits slight lag on the immediate next 15-minute timestep (MAE = {h1_err_dl:.3f}).",
+        "Mitigation Idea & Adaptation Status": f"RESOLVED: Stacking Ensemble leverages Ridge's direct weight on step t, reducing Horizon-1 error from {h1_err_dl:.3f} to {h1_err_ens:.3f} (-{h1_reduct:.1f}%).",
     })
 
     df_curated = pd.DataFrame(curated_cases)
@@ -782,47 +770,37 @@ def run_benchmark_for_site(data_path, checkpoint_path, robust_checkpoint_path, r
     print("=" * 95)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Milestone 3 Comprehensive Robustness Benchmark")
-    parser.add_argument("--site", choices=["Caltech", "JPL", "all", "caltech", "jpl"], default=None,
-                        help="Station site to evaluate ('Caltech', 'JPL', or 'all')")
-    parser.add_argument("--data", default="outputs/caltech_occupancy_data.npz",
-                        help="Path to preprocessed station .npz data")
-    parser.add_argument("--checkpoint", default="outputs/dlinear_caltech.pt",
-                        help="Path to baseline DLinear model checkpoint")
-    parser.add_argument("--robust-checkpoint", default="outputs/dlinear_caltech_robust.pt",
-                        help="Path to updated robust DLinear model checkpoint")
-    parser.add_argument("--ridge-path", default="outputs/benchmark_caltech/ridge.joblib",
-                        help="Path to Ridge regression benchmark checkpoint")
+def main() -> None:
+    """CLI parser for Milestone 3 benchmark."""
+    parser = argparse.ArgumentParser(description="Comprehensive Milestone 3 quantitative robustness benchmark.")
+    parser.add_argument("--site", choices=["Caltech", "JPL", "all", "caltech", "jpl"], default="all",
+                        help="Target station hub ('Caltech', 'JPL', or 'all')")
+    parser.add_argument("--data", default="outputs/caltech_occupancy_data.npz", help="Path to preprocessed station NPZ")
+    parser.add_argument("--checkpoint", default="outputs/dlinear_caltech.pt", help="Baseline DLinear checkpoint")
+    parser.add_argument("--robust-checkpoint", default="outputs/dlinear_caltech_robust.pt", help="Robust DLinear checkpoint")
+    parser.add_argument("--ridge-path", default="outputs/benchmark_caltech/ridge.joblib", help="Ridge model checkpoint")
     args = parser.parse_args()
 
-    if args.site is not None:
-        if args.site.lower() == "all":
-            sites = ["Caltech", "JPL"]
-        else:
-            sites = [args.site.capitalize()]
-
-        for i, s in enumerate(sites):
-            s_tag = s.lower()
-            save_def = (i == 0)
+    if args.site.lower() == "all":
+        for s_tag, s_name in [("caltech", "Caltech"), ("jpl", "JPL")]:
             run_benchmark_for_site(
                 data_path=f"outputs/{s_tag}_occupancy_data.npz",
                 checkpoint_path=f"outputs/dlinear_{s_tag}.pt",
                 robust_checkpoint_path=f"outputs/dlinear_{s_tag}_robust.pt",
                 ridge_path=f"outputs/benchmark_{s_tag}/ridge.joblib",
-                site_name=s,
-                save_default=save_def
+                site_name=s_name,
+                save_default=(s_tag == "caltech"),
             )
     else:
-        site_inferred = "JPL" if "jpl" in args.data.lower() else "Caltech"
+        site_inferred = "JPL" if "jpl" in args.data.lower() or args.site.lower() == "jpl" else "Caltech"
         s_tag = site_inferred.lower()
         run_benchmark_for_site(
-            data_path=args.data,
-            checkpoint_path=args.checkpoint if ("jpl" not in args.data.lower() or "jpl" in args.checkpoint.lower()) else f"outputs/dlinear_{s_tag}.pt",
-            robust_checkpoint_path=args.robust_checkpoint if ("jpl" not in args.data.lower() or "jpl" in args.robust_checkpoint.lower()) else f"outputs/dlinear_{s_tag}_robust.pt",
-            ridge_path=args.ridge_path if ("jpl" not in args.data.lower() or "jpl" in args.ridge_path.lower()) else f"outputs/benchmark_{s_tag}/ridge.joblib",
+            data_path=args.data if "jpl" not in args.site.lower() else f"outputs/{s_tag}_occupancy_data.npz",
+            checkpoint_path=args.checkpoint if "jpl" not in args.site.lower() else f"outputs/dlinear_{s_tag}.pt",
+            robust_checkpoint_path=args.robust_checkpoint if "jpl" not in args.site.lower() else f"outputs/dlinear_{s_tag}_robust.pt",
+            ridge_path=args.ridge_path if "jpl" not in args.site.lower() else f"outputs/benchmark_{s_tag}/ridge.joblib",
             site_name=site_inferred,
-            save_default=True
+            save_default=True,
         )
 
 

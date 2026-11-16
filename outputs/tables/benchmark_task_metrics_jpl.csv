@@ -6,10 +6,10 @@ Clean: Stacking Ensemble (DLinear + Ridge),"1.7899 [1.7604, 1.8249]","2.9553 [2.
 Clean: Confidence Abstention (90% Retained),"1.5623 [1.5343, 1.5879]","2.5569 [2.4943, 2.6183]",54.2%,76.0%,0.704,0.806,5.33
 Corrupted Telemetry (Without Sanitizer),FAILED (NaN crash on 50 windows),FAILED (NaN scale division),0.0%,0.0%,0.000,0.000,N/A
 Corrupted Telemetry (With InputSanitizer),"1.7501 [1.6178, 1.8934]","2.6607 [2.4358, 2.9198]",49.3%,70.9%,0.678,0.780,5.46
-Random Bounded Noise (eps=1.0 car) [Original Defenseless],"1.7425 [1.6392, 1.8524]","2.5177 [2.3714, 2.6791]",45.5%,70.4%,0.645,0.755,5.46
-Random Bounded Noise (eps=1.0 car) [Updated Robust Model],"1.7934 [1.6847, 1.9093]","2.6077 [2.4619, 2.7910]",45.9%,68.8%,0.669,0.756,5.70
+Random Bounded Noise (eps=1.0 car) [Original Defenseless],"1.7310 [1.6242, 1.8483]","2.5059 [2.3503, 2.6591]",46.8%,70.3%,0.655,0.755,5.46
+Random Bounded Noise (eps=1.0 car) [Updated Robust Model],"1.8000 [1.6864, 1.9197]","2.6191 [2.4642, 2.7727]",45.6%,68.8%,0.670,0.755,5.68
 White-Box FGSM Attack (eps=1.0 car),"4.2774 [4.1112, 4.4488]","5.1613 [4.9649, 5.3644]",12.0%,22.9%,0.415,0.479,6.64
-White-Box PGD-7 (eps=1.0 car) [Original Model Defenseless],"4.5452 [4.3903, 4.6977]","5.2523 [5.0649, 5.4410]",5.3%,12.5%,0.315,0.328,5.53
-White-Box PGD-7 (eps=1.0 car) [Updated Robust Model],"4.8242 [4.6530, 4.9935]","5.6303 [5.4398, 5.8340]",4.6%,14.2%,0.327,0.339,6.51
-White-Box PGD-7 Attack [With Stacking Ensemble Defense],"4.3775 [4.2282, 4.5409]","5.0683 [4.8963, 5.2687]",6.8%,15.8%,0.214,0.256,4.97
-White-Box PGD-7 Attack [With Confidence Abstention],"4.4924 [4.3321, 4.6455]","5.1951 [4.9909, 5.3856]",5.4%,12.6%,0.300,0.314,5.17
+White-Box PGD-7 (eps=1.0 car) [Original Model Defenseless],"4.5188 [4.3725, 4.6742]","5.2316 [5.0522, 5.4173]",5.2%,13.2%,0.322,0.336,5.54
+White-Box PGD-7 (eps=1.0 car) [Updated Robust Model],"4.8307 [4.6638, 5.0093]","5.6395 [5.4543, 5.8465]",4.6%,14.6%,0.328,0.341,6.49
+White-Box PGD-7 Attack [With Stacking Ensemble Defense],"4.3325 [4.1885, 4.5028]","5.0405 [4.8733, 5.2427]",7.4%,17.0%,0.222,0.264,4.95
+White-Box PGD-7 Attack [With Confidence Abstention],"4.4680 [4.3042, 4.6267]","5.1789 [4.9789, 5.3625]",5.3%,13.4%,0.303,0.317,5.14

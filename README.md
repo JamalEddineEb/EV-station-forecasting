@@ -48,13 +48,44 @@ python -m src.benchmark_models --data outputs/caltech_occupancy_data.npz
 
 The report and JSON measurements are written to `outputs/benchmark/`. The script measures total fit time, epoch time, peak PyTorch GPU memory, process RSS, parameter count, checkpoint size, estimated forward-pass FLOPs, single-sample latency, batched latency/throughput, test-set accuracy, and CPU dynamic-INT8 quantization impact. It measures the available GPU and CPU inference paths, if CUDA is available. ONNX, distillation, and energy results are identified as not measured unless explicitly implemented. Run the command in the intended Python environment and on the target device; hardware contention and software versions affect results.
 
+## Safety, Robustness, and Reliability Benchmark (Milestone 3)
+
+Comprehensive quantitative robustness benchmarking, defensive telemetry sanitization, adversarial threat modeling (FGSM, PGD-7, Random Noise), conformal calibration (Split-CQR), selective forecasting abstention, and multi-model stacking across both Caltech ($C_{\max}=54$) and JPL ($C_{\max}=56$) charging hubs.
+
+For detailed architecture, mathematical formulations, and failure mode analysis, see [docs/ROBUSTNESS.md](docs/ROBUSTNESS.md).
+
+### Quick start commands:
+
+1. **Train robust models** with time-series jittering augmentation:
+   ```bash
+   python src/train_robust.py --site all
+   ```
+
+2. **Run comprehensive quantitative robustness benchmark**:
+   ```bash
+   python src/benchmark_robustness.py --site all
+   ```
+   Exports primary task metrics, inference latency, hardware throughput, memory footprints, and failure case extraction to `outputs/tables/`.
+
+3. **Generate visual diagnostic figures**:
+   ```bash
+   python src/generate_diagnostics.py --site all
+   ```
+   Generates robustness curves, confidence histograms, calibration diagrams, and unified cross-hub failure case trajectories in `outputs/figures/`.
+
+4. **Run standalone adversarial and reliability evaluations**:
+   ```bash
+   python src/evaluate_adversarial.py --site all
+   python src/evaluate_reliability.py --site all
+   ```
+
 ## Saved outputs
 
-- `outputs/figures/`: plots.
-- `outputs/tables/`: data-quality and summary tables.
-- `outputs/caltech_occupancy_data.npz` and `outputs/jpl_occupancy_data.npz`: training, validation, and test datasets.
-- `outputs/*_predictions.npz`: trained-model and baseline validation/test forecasts.
-- `outputs/model_comparison.csv`: horizon-by-horizon model metrics.
-- `outputs/benchmark/benchmark_report.md` and `benchmark_results.json`: hardware-specific performance results.
+- `outputs/figures/`: Diagnostic plots, including `robustness_curves.png`, `confidence_histograms.png`, `calibration_diagrams.png`, and `failure_cases.png`.
+- `outputs/tables/`: Quantitative benchmark tables (`benchmark_task_metrics_*.csv`, `benchmark_latency_*.csv`, `benchmark_model_sizes_*.csv`, `failure_cases_extracted_*.csv`).
+- `outputs/caltech_occupancy_data.npz` and `outputs/jpl_occupancy_data.npz`: Training, validation, and test datasets.
+- `outputs/*_predictions.npz`: Trained-model and baseline validation/test forecasts.
+- `outputs/model_comparison.csv`: Horizon-by-horizon model metrics.
+- `outputs/benchmark/benchmark_report.md` and `benchmark_results.json`: Hardware-specific performance results.
 
-Saved outputs are included in the repository, for example [the occupancy plot](outputs/figures/occupancy_profiles.png).
+Saved outputs are included in the repository, for example [the occupancy plot](outputs/figures/occupancy_profiles.png) and [failure case trajectories](outputs/figures/failure_cases.png).

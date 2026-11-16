@@ -1,15 +1,15 @@
 Test Condition,MAE [95% CI],RMSE [95% CI],Acc (<=1 car),Acc (<=2 cars),Raw 80% Cov,Calibrated 80% Cov,Mean Width
-Clean: Original Model (Uncalibrated Raw),"1.8437 [1.8132, 1.8834]","3.1912 [3.1147, 3.2851]",51.0%,72.4%,0.703,N/A (Raw),5.47
-Clean: Original Model (Conformal Split-CQR),"1.8437 [1.8132, 1.8834]","3.1912 [3.1147, 3.2851]",51.0%,72.4%,0.703,0.800,6.26
-Clean: Updated Robust Model (Trained Jittering),"1.8442 [1.8142, 1.8830]","3.1587 [3.0842, 3.2462]",50.8%,72.1%,0.729,0.808,6.47
-Clean: Stacking Ensemble (DLinear + Ridge),"1.7899 [1.7604, 1.8249]","2.9553 [2.8869, 3.0348]",49.2%,71.8%,0.714,0.815,5.55
-Clean: Confidence Abstention (90% Retained),"1.5623 [1.5343, 1.5879]","2.5569 [2.4943, 2.6183]",54.2%,76.0%,0.704,0.806,5.33
+Clean: Original Model (Uncalibrated Raw),"0.9040 [0.8927, 0.9158]","1.3390 [1.3176, 1.3596]",67.5%,88.2%,0.611,N/A (Raw),2.13
+Clean: Original Model (Conformal Split-CQR),"0.9040 [0.8927, 0.9158]","1.3390 [1.3176, 1.3596]",67.5%,88.2%,0.611,0.767,2.83
+Clean: Updated Robust Model (Trained Jittering),"0.9241 [0.9122, 0.9366]","1.3809 [1.3585, 1.4042]",66.7%,87.6%,0.630,0.769,2.86
+Clean: Stacking Ensemble (DLinear + Ridge),"0.8997 [0.8880, 0.9115]","1.3152 [1.2946, 1.3347]",67.3%,88.5%,0.614,0.777,2.70
+Clean: Confidence Abstention (90% Retained),"0.8157 [0.8052, 0.8263]","1.1840 [1.1690, 1.2007]",70.4%,90.4%,0.604,0.768,2.48
 Corrupted Telemetry (Without Sanitizer),FAILED (NaN crash on 50 windows),FAILED (NaN scale division),0.0%,0.0%,0.000,0.000,N/A
-Corrupted Telemetry (With InputSanitizer),"1.7501 [1.6178, 1.8934]","2.6607 [2.4358, 2.9198]",49.3%,70.9%,0.678,0.780,5.46
-Random Bounded Noise (eps=1.0 car) [Original Defenseless],"1.7425 [1.6392, 1.8524]","2.5177 [2.3714, 2.6791]",45.5%,70.4%,0.645,0.755,5.46
-Random Bounded Noise (eps=1.0 car) [Updated Robust Model],"1.7934 [1.6847, 1.9093]","2.6077 [2.4619, 2.7910]",45.9%,68.8%,0.669,0.756,5.70
-White-Box FGSM Attack (eps=1.0 car),"4.2774 [4.1112, 4.4488]","5.1613 [4.9649, 5.3644]",12.0%,22.9%,0.415,0.479,6.64
-White-Box PGD-7 (eps=1.0 car) [Original Model Defenseless],"4.5452 [4.3903, 4.6977]","5.2523 [5.0649, 5.4410]",5.3%,12.5%,0.315,0.328,5.53
-White-Box PGD-7 (eps=1.0 car) [Updated Robust Model],"4.8242 [4.6530, 4.9935]","5.6303 [5.4398, 5.8340]",4.6%,14.2%,0.327,0.339,6.51
-White-Box PGD-7 Attack [With Stacking Ensemble Defense],"4.3775 [4.2282, 4.5409]","5.0683 [4.8963, 5.2687]",6.8%,15.8%,0.214,0.256,4.97
-White-Box PGD-7 Attack [With Confidence Abstention],"4.4924 [4.3321, 4.6455]","5.1951 [4.9909, 5.3856]",5.4%,12.6%,0.300,0.314,5.17
+Corrupted Telemetry (With InputSanitizer),"0.7654 [0.7241, 0.8120]","1.0832 [1.0250, 1.1413]",71.9%,92.1%,0.592,0.760,2.33
+Random Bounded Noise (eps=1.0 car) [Original Defenseless],"0.8345 [0.7888, 0.8794]","1.1422 [1.0776, 1.2021]",69.8%,91.2%,0.537,0.725,2.37
+Random Bounded Noise (eps=1.0 car) [Updated Robust Model],"0.8629 [0.8093, 0.9151]","1.2012 [1.1278, 1.2681]",68.1%,89.8%,0.567,0.715,2.39
+White-Box FGSM Attack (eps=1.0 car),"2.4581 [2.3671, 2.5490]","2.9196 [2.8125, 3.0167]",19.2%,44.5%,0.346,0.432,3.88
+White-Box PGD-7 (eps=1.0 car) [Original Model Defenseless],"2.8234 [2.7462, 2.8988]","3.1384 [3.0518, 3.2242]",7.3%,29.0%,0.239,0.249,2.67
+White-Box PGD-7 (eps=1.0 car) [Updated Robust Model],"2.8203 [2.7303, 2.8995]","3.1609 [3.0643, 3.2477]",8.5%,28.5%,0.245,0.271,3.27
+White-Box PGD-7 Attack [With Stacking Ensemble Defense],"2.7970 [2.7146, 2.8740]","3.1197 [3.0322, 3.2044]",9.1%,28.2%,0.123,0.166,2.28
+White-Box PGD-7 Attack [With Confidence Abstention],"2.7767 [2.7093, 2.8626]","3.0823 [2.9976, 3.1771]",7.3%,29.4%,0.202,0.211,2.46
