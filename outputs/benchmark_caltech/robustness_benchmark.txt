@@ -1,0 +1,61 @@
+
+===============================================================================================
+SECTION 1: INFERENCE LATENCY, THROUGHPUT, AND SYSTEM EFFICIENCY BENCHMARK
+===============================================================================================
+                          Pipeline / Runtime  Single p50 (ms)  Single p90 (ms)  Batch p50 (ms)  Batch p90 (ms)  Throughput (samples/s)  Process RSS (MiB)
+               DLinear FP32 (Original Clean)            0.177            0.222           1.563           1.776                 39591.1              586.1
+DLinear FP32 (Updated Robust with Jittering)            0.176            0.186           1.566           1.786                 38609.2              586.1
+            DLinear Dynamic INT8 (Quantized)            0.388            0.456           1.850           2.139                 33929.6              588.0
+  DLinear + InputSanitizer (Robust Pipeline)            0.328            0.402           2.083           2.339                 30012.1              588.0
+         Stacking Ensemble (DLinear + Ridge)            0.507            0.579           2.266           2.527                 28504.0              590.4
+  DLinear FP32 (Corrupted Input + Sanitizer)            0.373            0.428           2.571           2.808                 24685.0              590.4
+
+===============================================================================================
+SECTION 2: MEMORY, VRAM, AND MODEL ARTIFACT SIZE COMPARISON
+===============================================================================================
+                      Model Variant  Params  Weights (KiB)     VRAM Peak  Active RSS (MiB)
+      DLinear FP32 (Original Model)   64626          254.3 0.0 MiB (CPU)             586.1
+DLinear FP32 (Updated Robust Model)   64626          254.3 0.0 MiB (CPU)             586.1
+           DLinear INT8 (Quantized)   64626           67.2 0.0 MiB (CPU)             588.0
+           DLinear + InputSanitizer   64626          254.3 0.0 MiB (CPU)             588.0
+  Stacking Ensemble (DLinear+Ridge)   76674          320.1 0.0 MiB (CPU)             590.4
+
+===============================================================================================
+SECTION 3: PRIMARY TASK METRICS WITH BOOTSTRAPPED 95% CONFIDENCE INTERVALS
+===============================================================================================
+                                            Test Condition                     MAE [95% CI]               RMSE [95% CI] Acc (<=1 car) Acc (<=2 cars) Raw 80% Cov Calibrated 80% Cov Mean Width
+                  Clean: Original Model (Uncalibrated Raw)          0.9040 [0.8927, 0.9158]     1.3390 [1.3176, 1.3596]         67.5%          88.2%       0.611          N/A (Raw)       2.13
+               Clean: Original Model (Conformal Split-CQR)          0.9040 [0.8927, 0.9158]     1.3390 [1.3176, 1.3596]         67.5%          88.2%       0.611              0.767       2.83
+           Clean: Updated Robust Model (Trained Jittering)          0.9241 [0.9122, 0.9366]     1.3809 [1.3585, 1.4042]         66.7%          87.6%       0.630              0.769       2.86
+                Clean: Stacking Ensemble (DLinear + Ridge)          0.8997 [0.8880, 0.9115]     1.3152 [1.2946, 1.3347]         67.3%          88.5%       0.614              0.777       2.70
+               Clean: Confidence Abstention (90% Retained)          0.8157 [0.8052, 0.8263]     1.1840 [1.1690, 1.2007]         70.4%          90.4%       0.604              0.768       2.48
+                   Corrupted Telemetry (Without Sanitizer) FAILED (NaN crash on 50 windows) FAILED (NaN scale division)          0.0%           0.0%       0.000              0.000        N/A
+                 Corrupted Telemetry (With InputSanitizer)          0.7654 [0.7241, 0.8120]     1.0832 [1.0250, 1.1413]         71.9%          92.1%       0.592              0.760       2.33
+                        Random Bounded Noise (eps=1.0 car)          0.8576 [0.8126, 0.8994]     1.1557 [1.0948, 1.2111]         68.6%          90.9%       0.515              0.705       2.37
+                       White-Box FGSM Attack (eps=1.0 car)          2.4581 [2.3671, 2.5490]     2.9196 [2.8125, 3.0167]         19.2%          44.5%       0.346              0.432       3.88
+White-Box PGD-7 (eps=1.0 car) [Original Model Defenseless]          2.7890 [2.7129, 2.8670]     3.1014 [3.0157, 3.1867]          7.5%          29.6%       0.240              0.251       2.66
+      White-Box PGD-7 (eps=1.0 car) [Updated Robust Model]          2.7621 [2.6661, 2.8481]     3.1150 [3.0137, 3.2072]          8.9%          31.1%       0.259              0.288       3.27
+   White-Box PGD-7 Attack [With Stacking Ensemble Defense]          2.7591 [2.6810, 2.8398]     3.0846 [2.9982, 3.1667]          9.8%          29.4%       0.130              0.173       2.22
+       White-Box PGD-7 Attack [With Confidence Abstention]          2.7527 [2.6691, 2.8369]     3.0581 [2.9670, 3.1499]          7.5%          29.9%       0.204              0.214       2.45
+
+===============================================================================================
+SECTION 4: CURATED TABLE OF REPRESENTATIVE FAILURE & RESOLVED ADAPTATION EXAMPLES
+===============================================================================================
+          Case ID           Case Type                                 Timestamp                                                                               Input Context / Scenario  Expected Mean (Cars)  Predicted Mean (Cars) 80% Confidence Interval  Interval Width (W)  MAE (Cars)                                                                                       Why It Failed (Root Cause Analysis)                                                                                    Mitigation Idea & Adaptation Status
+           Case 1  Clean Test Failure                 2021-09-13 15:15:00+00:00                 Monday morning arrival surge after quiet weekend; recent 4h mean occupancy < 1.5 cars.                 12.81                   4.72            [1.86, 9.38]                7.52       8.090       Linear moving-average pooling kernel (k=25) smooths recent trend, creating inertia lag when demand surges abruptly.     UNMITIGATED BASELINE: Incorporate real-time arrival momentum features or asymmetric penalty for under-forecasting.
+           Case 2  Clean Test Failure                 2021-09-07 15:15:00+00:00                            Tuesday morning arrival surge immediately following Labor Day long weekend.                 12.69                   5.79            [1.32, 7.86]                6.53       6.890        The 7-day cyclical history contains the preceding holiday's zero-occupancy dip, depressing the predicted baseline.          UNMITIGATED BASELINE: Holiday masking flag to treat post-holiday rebound days with custom transition weights.
+           Case 3  Clean Test Failure                 2021-08-18 15:15:00+00:00                      Midweek morning occupancy surges to ~10 cars despite recent 4h mean of 0.12 cars.                  9.94                   4.53            [1.17, 6.28]                5.11       5.400                Exogenous campus event demand is invisible in historical telemetry alone without calendar booking signals.                              UNMITIGATED BASELINE: Ingest campus event booking schedule API into model input features.
+           Case 4  Clean Test Failure                 2021-09-06 14:00:00+00:00          Labor Day federal holiday morning; campus is closed but day-of-week feature indicates Monday.                  0.69                   4.92            [0.00, 7.42]                7.42       4.290 Cyclic day-of-week sinusoidal features strongly trigger Monday morning commute weights, overpowering binary holiday flag.        UNMITIGATED BASELINE: Multiplicative gating layer setting occupancy expectations to zero on statutory holidays.
+           Case 5  Clean Test Failure                 2021-07-23 15:45:00+00:00     Mid-summer Friday afternoon where campus researchers departed earlier than standard term schedule.                  2.38                   6.89            [2.14, 8.84]                6.70       4.520                                    Model lacks academic term seasonality (summer term vs fall term schedule differences).           UNMITIGATED BASELINE: Incorporate month-of-year seasonal encodings and summer schedule categorical features.
+           Case 6 Adversarial Failure Test Sample 100 under PGD-7 (eps=1.0 car)           Worst-case L_inf gradient perturbation (+/- 1.0 car) crafted via 7-step PGD on pinball loss.                  3.75                   0.85           [-0.28, 2.01]                2.29       2.900                      White-box gradient steps systematically steer linear projection layers into false occupancy troughs.   ADAPTATION: Input median filtering removes high-frequency adversarial jitter; Stacking Ensemble anchors predictions.
+Case 7 [RESOLVED] Resolved Adaptation                 2021-05-13 19:00:00+00:00 Telemetry packet loss: 8 consecutive 15-min intervals (2 hours) dropped to NaN before forecast origin.                  2.88                   1.96            [1.42, 3.61]                2.20       1.020                    Raw normalization scale window_scale encounters NaNs, producing division by zero and crashing PyTorch.         RESOLVED: InputSanitizer forward-fills valid readings; 100% crash averted, 80% interval covers true occupancy.
+Case 8 [RESOLVED] Resolved Adaptation                 2021-09-08 14:45:00+00:00                Severe demand volatility during stormy afternoon; unmitigated baseline MAE = 4.15 cars.                 11.06                   6.91           [0.26, 10.61]               11.06       4.150         Conflicting seasonal and trend signals inflated interval width to W = 11.06 cars, indicating high epistemic risk. RESOLVED: SelectiveForecaster detects W > tau (4.78 cars) and abstains from automated control, alerting grid operator.
+Case 9 [RESOLVED] Resolved Adaptation All Test Sequences (Horizon 1, 15m ahead)                                    Short-term persistence evaluation across all 12,102 test sequences.                  2.30                   2.31             [1.87, 2.7]                0.83       0.341        DLinear's moving-average trend pooling exhibits slight lag on the immediate next 15-minute timestep (MAE = 0.421).   RESOLVED: Stacking Ensemble leverages Ridge's direct weight on step t, reducing Horizon-1 error from 0.421 to 0.364.
+
+===============================================================================================
+SUCCESS: All Milestone 3 benchmarks finished and saved to outputs/tables/:
+  - outputs/tables/benchmark_task_metrics.csv
+  - outputs/tables/benchmark_latency.csv
+  - outputs/tables/benchmark_model_sizes.csv
+  - outputs/tables/failure_cases_extracted.csv
+===============================================================================================

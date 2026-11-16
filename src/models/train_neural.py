@@ -66,11 +66,14 @@ def make_tensors(hist, cal, y):
 
 
 @profile("train_epoch")
-def train_epoch(model, loader, opt, loss_fn, device):
+def train_epoch(model, loader, opt, loss_fn, device, jitter_sigma=0.0):
     """One pass over the training data; returns the mean training loss (running average over the epoch)."""
     model.train(); total = torch.zeros((), device=device)
     for h,c,y in loader:
         h,c,y = h.to(device),c.to(device),y.to(device)
+        if jitter_sigma > 0.0:
+            noise = torch.randn_like(h) * jitter_sigma
+            h = torch.clamp(h + noise, min=0.0)
         opt.zero_grad(); loss=loss_fn(model(h,c),y); loss.backward(); opt.step()
         total += loss.detach() * len(h)  # stays on device: no per-step sync
     return total.item() / len(loader.dataset)
@@ -88,7 +91,7 @@ def validate(model, val_data, device, loss_fn, batch=2048):
 
 
 @profile("fit")
-def fit(model, loader, val_data, device, epochs, patience, lr, name):
+def fit(model, loader, val_data, device, epochs, patience, lr, name, jitter_sigma=0.0):
     """Train with pinball loss and early stopping; returns (model, history).
 
     history has one {epoch, train_loss, val_loss} record per epoch (pinball loss on the normalized scale).
@@ -98,7 +101,7 @@ def fit(model, loader, val_data, device, epochs, patience, lr, name):
     val_data=[x.to(device) for x in val_data]
     best=float("inf"); best_state=None; stale=0; history=[]
     for epoch in range(epochs):
-        tl = train_epoch(model, loader, opt, loss_fn, device)
+        tl = train_epoch(model, loader, opt, loss_fn, device, jitter_sigma=jitter_sigma)
         vl = validate(model, val_data, device, loss_fn)
         history.append({"epoch": epoch+1, "train_loss": tl, "val_loss": vl})
         print("{} epoch {:02d}: train_pinball={:.6f} val_pinball={:.6f}".format(name,epoch+1,tl,vl),flush=True)
@@ -141,6 +144,8 @@ def main():
     p.add_argument("--batch-size",type=int,default=256)
     p.add_argument("--lr",type=float,default=1e-4)
     p.add_argument("--hidden",type=int,default=64)
+    p.add_argument("--jitter-sigma",type=float,default=0.0,
+                   help="Additive Gaussian noise std for normalized history data augmentation (default 0.0)")
     p.add_argument("--seed",type=int,default=42)
     p.add_argument("--energy",action="store_true",help="estimate energy with codecarbon (optional)")
     a=p.parse_args()
@@ -162,7 +167,7 @@ def main():
     models=[("DLinear",DLinear(L,H,C)),("GRU",GRUForecast(a.hidden,C,H))]
     for name,model in models:
         profiling.tag(name)
-        model,history=fit(model,loader,va,device,a.epochs,a.patience,a.lr,name)
+        model,history=fit(model,loader,va,device,a.epochs,a.patience,a.lr,name,jitter_sigma=a.jitter_sigma)
         vp=predict(model,(va[0],va[1]),device,window_scale(vh)); sp=predict(model,te,device,window_scale(sh))
         out=os.path.join(a.outdir,name.lower()+"_predictions.npz")
         arrays={}
