@@ -1,0 +1,22 @@
+policy,review,seed,operator minutes
+stale,none,0,0.0
+scheduled,none,0,0.0
+triggered,none,0,0.0
+gated,none,0,0.0
+gated,random,0,176.0
+gated,disagreement,0,176.0
+gated,all,0,4072.0
+stale,none,1,0.0
+scheduled,none,1,0.0
+triggered,none,1,0.0
+gated,none,1,0.0
+gated,random,1,176.0
+gated,disagreement,1,176.0
+gated,all,1,6098.0
+stale,none,2,0.0
+scheduled,none,2,0.0
+triggered,none,2,0.0
+gated,none,2,0.0
+gated,random,2,176.0
+gated,disagreement,2,176.0
+gated,all,2,6098.0
