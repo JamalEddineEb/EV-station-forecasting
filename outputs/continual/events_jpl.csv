@@ -1,149 +1,222 @@
 day,event,reason,version,train_s,rss_mib,policy,review,seed,champion MAE (shadow),challenger MAE (shadow),challenger coverage (shadow),"MAE next week, champion","MAE next week, challenger",hindsight better,correct,reviewed,abnormal reviewed,tagged,select_ms
-6,deploy,schedule,v1,14.122957468032837,2465.46484375,scheduled,none,0,,,,,,,,,,,
-13,deploy,schedule,v2,14.275584251852706,2486.1015625,scheduled,none,0,,,,,,,,,,,
-20,deploy,schedule,v3,21.116803066106513,2487.82421875,scheduled,none,0,,,,,,,,,,,
-27,deploy,schedule,v4,17.103782010031864,2489.55078125,scheduled,none,0,,,,,,,,,,,
-34,deploy,schedule,v5,22.177119204076007,2533.1796875,scheduled,none,0,,,,,,,,,,,
-41,deploy,schedule,v6,42.14085346297361,2490.265625,scheduled,none,0,,,,,,,,,,,
-48,deploy,schedule,v7,35.37782898801379,2490.39453125,scheduled,none,0,,,,,,,,,,,
-55,deploy,schedule,v8,13.328414504881948,2533.4375,scheduled,none,0,,,,,,,,,,,
-62,deploy,schedule,v9,22.58627056214027,2490.4609375,scheduled,none,0,,,,,,,,,,,
-69,deploy,schedule,v10,14.693222041008994,2490.4765625,scheduled,none,0,,,,,,,,,,,
-76,deploy,schedule,v11,33.827100466005504,2533.48828125,scheduled,none,0,,,,,,,,,,,
-4,deploy,degradation,v1,28.157026990083978,2484.12890625,triggered,none,0,,,,,,,,,,,
+6,deploy,schedule,v1,15.365116721950471,631.39453125,scheduled,none,0,,,,,,,,,,,
+13,deploy,schedule,v2,8.488377196947113,2077.40625,scheduled,none,0,,,,,,,,,,,
+20,deploy,schedule,v3,9.21464073099196,2098.09375,scheduled,none,0,,,,,,,,,,,
+27,deploy,schedule,v4,6.570475148968399,2097.44140625,scheduled,none,0,,,,,,,,,,,
+34,deploy,schedule,v5,9.629373174160719,2102.4609375,scheduled,none,0,,,,,,,,,,,
+41,deploy,schedule,v6,10.065161830978468,2102.4765625,scheduled,none,0,,,,,,,,,,,
+48,deploy,schedule,v7,11.265592185780406,2102.5,scheduled,none,0,,,,,,,,,,,
+55,deploy,schedule,v8,6.609241988975555,2107.7890625,scheduled,none,0,,,,,,,,,,,
+62,deploy,schedule,v9,8.31067011714913,2101.50390625,scheduled,none,0,,,,,,,,,,,
+69,deploy,schedule,v10,5.37562784506008,2148.4765625,scheduled,none,0,,,,,,,,,,,
+76,deploy,schedule,v11,13.640172536019236,2101.49609375,scheduled,none,0,,,,,,,,,,,
+4,deploy,degradation,v1,16.29998961300589,632.69140625,triggered,none,0,,,,,,,,,,,
 12,recalibrate,,v1,,,triggered,none,0,,,,,,,,,,,
-12,deploy,accuracy SLO,v2,18.678847905946895,2486.09765625,triggered,none,0,,,,,,,,,,,
-22,recalibrate,,v2,,,triggered,none,0,,,,,,,,,,,
-25,deploy,degradation,v3,12.57476405100897,2489.31640625,triggered,none,0,,,,,,,,,,,
-33,recalibrate,,v3,,,triggered,none,0,,,,,,,,,,,
-42,recalibrate,,v3,,,triggered,none,0,,,,,,,,,,,
-49,recalibrate,,v3,,,triggered,none,0,,,,,,,,,,,
-73,deploy,degradation,v4,43.11724290205166,2533.5703125,triggered,none,0,,,,,,,,,,,
-4,challenger,degradation,v1,34.71132914489135,2484.3828125,gated,none,0,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,none,0,1.3179486989974976,1.5032415390014648,0.8835565476190477,1.2716615200042725,1.4220001697540283,False,True,0.0,0.0,0.0,
-34,challenger,accuracy SLO,v2,27.874900623923168,2490.74609375,gated,none,0,,,,,,,,,,,
-41,reject,accuracy SLO,v2,,,gated,none,0,1.5096763372421265,1.770864725112915,0.8005952380952381,1.8971644639968872,1.795697569847107,True,False,0.0,0.0,0.0,
+12,deploy,accuracy SLO,v2,12.877553516998887,2086.39453125,triggered,none,0,,,,,,,,,,,
+20,recalibrate,,v2,,,triggered,none,0,,,,,,,,,,,
+20,deploy,degradation,v3,9.428970498032868,2105.81640625,triggered,none,0,,,,,,,,,,,
+28,deploy,accuracy SLO,v4,4.455161351012066,2110.80859375,triggered,none,0,,,,,,,,,,,
+36,deploy,degradation,v5,7.453227758174762,2111.91796875,triggered,none,0,,,,,,,,,,,
+51,recalibrate,,v5,,,triggered,none,0,,,,,,,,,,,
+51,deploy,accuracy SLO,v6,7.809883561916649,2147.0234375,triggered,none,0,,,,,,,,,,,
+59,deploy,degradation+accuracy SLO,v7,6.614590474870056,2147.12109375,triggered,none,0,,,,,,,,,,,
+67,deploy,accuracy SLO,v8,9.653360588941723,2147.12890625,triggered,none,0,,,,,,,,,,,
+4,challenger,degradation,v1,13.939823576016352,2071.04296875,gated,none,0,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,none,0,1.3565733432769775,1.5038992166519165,0.8903459821428571,3.0681471824645996,3.470938205718994,False,True,0.0,0.0,0.0,
+14,recalibrate,,v0,,,gated,none,0,,,,,,,,,,,
+19,challenger,degradation,v2,5.759141381829977,2184.5078125,gated,none,0,,,,,,,,,,,
+21,recalibrate,,v0,,,gated,none,0,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,none,0,3.1717312335968018,3.834937572479248,0.8074776785714286,3.1865954399108887,3.874455690383911,False,True,0.0,0.0,0.0,
+30,recalibrate,,v0,,,gated,none,0,,,,,,,,,,,
+34,challenger,degradation+accuracy SLO,v3,9.692744290921837,2143.45703125,gated,none,0,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,none,0,3.2127902507781982,3.722208261489868,0.8215215773809523,3.92048716545105,3.619168996810913,True,False,0.0,0.0,0.0,
+49,challenger,degradation,v4,6.704125137068331,2154.36328125,gated,none,0,,,,,,,,,,,
 54,recalibrate,,v0,,,gated,none,0,,,,,,,,,,,
-55,challenger,age,v3,12.971298227086663,2490.8046875,gated,none,0,,,,,,,,,,,
-62,promote,age,v3,,,gated,none,0,1.818255066871643,1.6296535730361938,0.8224516369047619,1.5920839309692383,1.835349440574646,False,False,0.0,0.0,0.0,
-70,challenger,degradation,v4,22.07015562010929,2490.8359375,gated,none,0,,,,,,,,,,,
-4,challenger,degradation,v1,31.33956559188664,2484.6640625,gated,random,0,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,random,0,1.2429771423339844,1.4570337533950806,0.8928385416666667,1.2716615200042725,1.4220001697540283,False,True,14.0,0.0,192.0,0.03453543675797326
-34,challenger,accuracy SLO,v2,25.030257178936154,2490.5078125,gated,random,0,,,,,,,,,,,
-41,reject,accuracy SLO,v2,,,gated,random,0,1.6874154806137085,1.7374597787857056,0.7965494791666666,1.8971644639968872,1.7920472621917725,True,False,14.0,2.0,384.0,0.030547014570661953
+56,reject,degradation,v4,,,gated,none,0,2.9685065746307373,3.3530750274658203,0.7479538690476191,3.6979503631591797,3.554555892944336,True,False,0.0,0.0,0.0,
+61,recalibrate,,v0,,,gated,none,0,,,,,,,,,,,
+64,challenger,degradation+accuracy SLO+age,v5,7.288789780810475,2154.45703125,gated,none,0,,,,,,,,,,,
+71,promote,degradation+accuracy SLO+age,v5,,,gated,none,0,4.0160040855407715,3.7455432415008545,0.783203125,3.637596368789673,3.5739171504974365,True,True,0.0,0.0,0.0,
+4,challenger,degradation,v1,15.020168083021417,2112.83984375,gated,random,0,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,random,0,1.2770940065383911,1.459865689277649,0.9006510416666667,3.0681471824645996,3.470938205718994,False,True,14.0,0.0,192.0,0.03899806844336646
+14,recalibrate,,v0,,,gated,random,0,,,,,,,,,,,
+19,challenger,degradation,v2,8.031898283865303,2156.20703125,gated,random,0,,,,,,,,,,,
+21,recalibrate,,v0,,,gated,random,0,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,random,0,3.2366528511047363,4.316447734832764,0.7662760416666666,3.1865954399108887,3.986660957336426,False,True,14.0,0.0,192.0,0.034399530185120444
+30,recalibrate,,v0,,,gated,random,0,,,,,,,,,,,
+34,challenger,degradation+accuracy SLO,v3,13.376511740963906,2158.32421875,gated,random,0,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,random,0,2.9076859951019287,3.028175115585327,0.825390625,3.92048716545105,3.586786985397339,True,False,14.0,3.0,288.0,0.03404409757682255
+49,challenger,degradation,v4,6.643641727976501,2157.86328125,gated,random,0,,,,,,,,,,,
 54,recalibrate,,v0,,,gated,random,0,,,,,,,,,,,
-55,challenger,age,v3,17.66147401998751,2489.6875,gated,random,0,,,,,,,,,,,
-62,promote,age,v3,,,gated,random,0,1.818255066871643,1.5444880723953247,0.7913876488095238,1.5920839309692383,1.7855345010757446,False,False,14.0,0.0,0.0,0.03172127929116998
-70,challenger,degradation,v4,22.694048776989803,2531.21484375,gated,random,0,,,,,,,,,,,
-72,recalibrate,,v3,,,gated,random,0,,,,,,,,,,,
-4,challenger,degradation,v1,32.83502783393487,2484.77734375,gated,disagreement,0,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,disagreement,0,1.1202303171157837,1.3041056394577026,0.9010416666666666,1.2716615200042725,1.4220001697540283,False,True,14.0,0.0,288.0,0.05776371939906052
-34,challenger,accuracy SLO,v2,17.424649234861135,2490.37890625,gated,disagreement,0,,,,,,,,,,,
-41,reject,accuracy SLO,v2,,,gated,disagreement,0,1.4233300685882568,1.5328788757324219,0.8217447916666667,1.8971644639968872,1.7961740493774414,True,False,14.0,3.0,288.0,0.05543108896485397
+56,promote,degradation,v4,,,gated,random,0,3.428278684616089,2.844783067703247,0.7967122395833334,3.6979503631591797,3.5231335163116455,True,True,14.0,4.0,384.0,0.03325260643448148
+64,challenger,accuracy SLO,v5,7.536798384971917,2157.1015625,gated,random,0,,,,,,,,,,,
+67,recalibrate,,v4,,,gated,random,0,,,,,,,,,,,
+71,promote,accuracy SLO,v5,,,gated,random,0,4.037613868713379,3.741210460662842,0.7601996527777778,3.7438786029815674,3.400628089904785,True,True,14.0,6.0,672.0,0.03216086354638849
+4,challenger,degradation,v1,13.43580775288865,2062.8828125,gated,disagreement,0,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,disagreement,0,1.129520297050476,1.3064078092575073,0.9073893229166666,3.0681471824645996,3.470938205718994,False,True,14.0,0.0,288.0,0.05867232435515949
+14,recalibrate,,v0,,,gated,disagreement,0,,,,,,,,,,,
+19,challenger,degradation,v2,5.647966837044805,2098.83984375,gated,disagreement,0,,,,,,,,,,,
+21,recalibrate,,v0,,,gated,disagreement,0,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,disagreement,0,3.1717312335968018,3.9997475147247314,0.7933407738095238,3.1865954399108887,3.9185421466827393,False,True,14.0,0.0,0.0,0.061050855687686374
+30,recalibrate,,v0,,,gated,disagreement,0,,,,,,,,,,,
+34,challenger,degradation+accuracy SLO,v3,7.715150797041133,2144.0,gated,disagreement,0,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,disagreement,0,3.446096658706665,3.5436127185821533,0.8400607638888888,3.92048716545105,3.5868518352508545,True,False,14.0,3.0,480.0,0.06025939780686583
+49,challenger,degradation,v4,9.198224709136412,2179.40625,gated,disagreement,0,,,,,,,,,,,
 54,recalibrate,,v0,,,gated,disagreement,0,,,,,,,,,,,
-55,challenger,age,v3,22.674861568957567,2489.87109375,gated,disagreement,0,,,,,,,,,,,
-62,promote,age,v3,,,gated,disagreement,0,1.7979425191879272,1.5244909524917603,0.8020833333333334,1.5920839309692383,1.7584820985794067,False,False,14.0,0.0,96.0,0.05608081950673035
-70,challenger,degradation,v4,31.178183051990345,2489.5703125,gated,disagreement,0,,,,,,,,,,,
-76,recalibrate,,v3,,,gated,disagreement,0,,,,,,,,,,,
-4,challenger,degradation,v1,33.587628168053925,2484.98046875,gated,all,0,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,all,0,1.3185548782348633,1.4972453117370605,0.8835361067503925,1.2716615200042725,1.4220001697540283,False,True,672.0,0.0,35.0,0.006223995504634721
-34,challenger,accuracy SLO,v2,24.99507391708903,2489.8515625,gated,all,0,,,,,,,,,,,
-41,reject,accuracy SLO,v2,,,gated,all,0,1.3904540538787842,1.5039129257202148,0.7829733455882353,1.8971644639968872,1.7911100387573242,True,False,672.0,111.0,128.0,0.00623271002301148
+56,promote,degradation,v4,,,gated,disagreement,0,3.428278684616089,2.9641640186309814,0.8186848958333334,3.6979503631591797,3.3214030265808105,True,True,14.0,5.0,576.0,0.05535099522343704
+64,challenger,accuracy SLO,v5,11.728560789953917,2119.0859375,gated,disagreement,0,,,,,,,,,,,
+67,recalibrate,,v4,,,gated,disagreement,0,,,,,,,,,,,
+71,promote,accuracy SLO,v5,,,gated,disagreement,0,3.9072930812835693,3.730588912963867,0.7830403645833334,3.786539316177368,3.676238536834717,True,True,14.0,4.0,384.0,0.053123870332326205
+4,challenger,degradation,v1,14.280266124056652,2067.44140625,gated,all,0,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,all,0,1.3567272424697876,1.4978077411651611,0.8906985871271585,3.0681471824645996,3.470938205718994,False,True,672.0,0.0,35.0,0.005908443459442684
+14,recalibrate,,v0,,,gated,all,0,,,,,,,,,,,
+19,challenger,degradation,v2,7.622822614153847,2141.76953125,gated,all,0,,,,,,,,,,,
+21,recalibrate,,v0,,,gated,all,0,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,all,0,3.155817747116089,4.342182636260986,0.7711864406779662,3.1865954399108887,4.075837135314941,False,True,672.0,0.0,23.0,0.006824133119412831
+30,recalibrate,,v0,,,gated,all,0,,,,,,,,,,,
+34,challenger,degradation+accuracy SLO,v3,12.93301432998851,2144.96484375,gated,all,0,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,all,0,2.905696392059326,3.295513868331909,0.7989738805970149,3.92048716545105,3.660916566848755,True,False,672.0,111.0,136.0,0.006125874019094876
+49,challenger,degradation,v4,5.793436843901873,2141.98828125,gated,all,0,,,,,,,,,,,
 54,recalibrate,,v0,,,gated,all,0,,,,,,,,,,,
-55,challenger,age,v3,21.561905039008707,2488.66015625,gated,all,0,,,,,,,,,,,
-62,promote,age,v3,,,gated,all,0,1.8236091136932373,1.542195439338684,0.8209058544303798,1.5920839309692383,1.800749659538269,False,False,672.0,0.0,40.0,0.007044158077665738
-70,challenger,degradation,v4,14.534839204046875,2487.203125,gated,all,0,,,,,,,,,,,
-6,deploy,schedule,v1,36.08025032095611,2485.54296875,scheduled,none,1,,,,,,,,,,,
-13,deploy,schedule,v2,19.63630195404403,2487.27734375,scheduled,none,1,,,,,,,,,,,
-20,deploy,schedule,v3,14.206111439038068,2489.3125,scheduled,none,1,,,,,,,,,,,
-27,deploy,schedule,v4,29.79062948608771,2491.0703125,scheduled,none,1,,,,,,,,,,,
-34,deploy,schedule,v5,17.332304515875876,2491.76953125,scheduled,none,1,,,,,,,,,,,
-41,deploy,schedule,v6,24.825638346141204,2491.80078125,scheduled,none,1,,,,,,,,,,,
-48,deploy,schedule,v7,28.262809426058084,2491.80859375,scheduled,none,1,,,,,,,,,,,
-55,deploy,schedule,v8,18.25067906314507,2491.87109375,scheduled,none,1,,,,,,,,,,,
-62,deploy,schedule,v9,30.553176583955064,2491.87890625,scheduled,none,1,,,,,,,,,,,
-69,deploy,schedule,v10,20.57177606294863,2491.890625,scheduled,none,1,,,,,,,,,,,
-76,deploy,schedule,v11,28.22277884511277,2491.92578125,scheduled,none,1,,,,,,,,,,,
-4,deploy,degradation,v1,19.647894446039572,2485.5546875,triggered,none,1,,,,,,,,,,,
+56,promote,degradation,v4,,,gated,all,0,3.044532537460327,2.9422569274902344,0.8181442731277533,3.6979503631591797,3.5895309448242188,False,False,672.0,207.0,218.0,0.006406933867505619
+64,challenger,accuracy SLO,v5,6.093522455077618,2176.78515625,gated,all,0,,,,,,,,,,,
+71,recalibrate,,v4,,,gated,all,0,,,,,,,,,,,
+71,promote,accuracy SLO,v5,,,gated,all,0,4.092888832092285,3.690495014190674,0.7605978260869565,4.246715068817139,3.826892852783203,True,True,672.0,207.0,212.0,0.005695736035704613
+6,deploy,schedule,v1,9.685027645900846,2071.140625,scheduled,none,1,,,,,,,,,,,
+13,deploy,schedule,v2,9.033622733084485,2096.6796875,scheduled,none,1,,,,,,,,,,,
+20,deploy,schedule,v3,6.247717404039577,2139.0234375,scheduled,none,1,,,,,,,,,,,
+27,deploy,schedule,v4,13.138979331823066,2142.578125,scheduled,none,1,,,,,,,,,,,
+34,deploy,schedule,v5,8.24205037811771,2107.23046875,scheduled,none,1,,,,,,,,,,,
+41,deploy,schedule,v6,8.469168211100623,2143.9765625,scheduled,none,1,,,,,,,,,,,
+48,deploy,schedule,v7,13.195097179152071,2143.99609375,scheduled,none,1,,,,,,,,,,,
+55,deploy,schedule,v8,6.394668883876875,2107.37890625,scheduled,none,1,,,,,,,,,,,
+62,deploy,schedule,v9,6.351113328943029,2107.453125,scheduled,none,1,,,,,,,,,,,
+69,deploy,schedule,v10,11.231903101084754,2107.46875,scheduled,none,1,,,,,,,,,,,
+76,deploy,schedule,v11,12.352198414038867,2107.48828125,scheduled,none,1,,,,,,,,,,,
+4,deploy,degradation,v1,14.051425927085802,2078.359375,triggered,none,1,,,,,,,,,,,
 12,recalibrate,,v1,,,triggered,none,1,,,,,,,,,,,
-12,deploy,accuracy SLO,v2,12.384408555924892,2487.51953125,triggered,none,1,,,,,,,,,,,
-21,recalibrate,,v2,,,triggered,none,1,,,,,,,,,,,
-25,deploy,degradation,v3,35.696209396002814,2490.7265625,triggered,none,1,,,,,,,,,,,
-33,deploy,accuracy SLO,v4,13.290084586944431,2491.921875,triggered,none,1,,,,,,,,,,,
-42,recalibrate,,v4,,,triggered,none,1,,,,,,,,,,,
-49,recalibrate,,v4,,,triggered,none,1,,,,,,,,,,,
-4,challenger,degradation,v1,21.021166941151023,2485.6015625,gated,none,1,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,none,1,1.3145453929901123,1.4981253147125244,0.8955543154761905,1.312166690826416,1.4380438327789307,False,True,0.0,0.0,0.0,
-47,challenger,degradation,v2,22.40546793094836,2491.9609375,gated,none,1,,,,,,,,,,,
-54,reject,degradation,v2,,,gated,none,1,1.256812334060669,1.626257061958313,0.7959449404761905,1.80573308467865,1.7200709581375122,False,True,0.0,0.0,0.0,
-62,challenger,degradation+age,v3,31.376354004023597,2492.03125,gated,none,1,,,,,,,,,,,
-69,reject,degradation+age,v3,,,gated,none,1,1.6254503726959229,1.8166747093200684,0.8054315476190477,1.970273733139038,2.074411392211914,,,0.0,0.0,0.0,
-4,challenger,degradation,v1,22.297437902074307,2485.6640625,gated,random,1,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,random,1,1.2881388664245605,1.5036725997924805,0.888671875,1.312166690826416,1.4380438327789307,False,True,14.0,0.0,96.0,0.031681232420461516
-47,challenger,degradation,v2,38.735083885956556,2491.703125,gated,random,1,,,,,,,,,,,
-54,reject,degradation,v2,,,gated,random,1,1.3366180658340454,1.4914135932922363,0.8239583333333333,1.80573308467865,1.7293940782546997,False,True,14.0,4.0,384.0,0.046725617721676826
-62,challenger,degradation+age,v3,21.019665376050398,2491.1875,gated,random,1,,,,,,,,,,,
-69,reject,degradation+age,v3,,,gated,random,1,1.8036218881607056,2.0354421138763428,0.7797309027777778,1.970273733139038,2.148195266723633,,,14.0,2.0,192.0,0.03449968062341213
-4,challenger,degradation,v1,20.982592277927324,2485.7109375,gated,disagreement,1,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,disagreement,1,1.3145453929901123,1.4981253147125244,0.8955543154761905,1.312166690826416,1.4380438327789307,False,True,14.0,0.0,0.0,0.052995248032467704
-47,challenger,degradation,v2,22.18583170999773,2492.07421875,gated,disagreement,1,,,,,,,,,,,
-54,reject,degradation,v2,,,gated,disagreement,1,1.3366180658340454,1.494404911994934,0.823828125,1.80573308467865,1.7200709581375122,False,True,14.0,4.0,384.0,0.05454846125628267
-62,challenger,degradation+age,v3,16.394427882041782,2491.5546875,gated,disagreement,1,,,,,,,,,,,
-69,reject,degradation+age,v3,,,gated,disagreement,1,1.8036218881607056,2.033356189727783,0.7748480902777778,1.970273733139038,2.154892683029175,,,14.0,2.0,192.0,0.05489255168608257
-4,challenger,degradation,v1,20.605409499956295,2485.75390625,gated,all,1,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,all,1,1.3041356801986694,1.4878522157669067,0.8959945820433437,1.312166690826416,1.4380438327789307,False,True,672.0,0.0,26.0,0.007004044683916228
-47,alert dismissed,degradation,v0,,,gated,all,1,,,,,,,,,,,
-55,challenger,age,v2,15.787772055948153,2490.90234375,gated,all,1,,,,,,,,,,,
-62,promote,age,v2,,,gated,all,1,1.8089104890823364,1.6787515878677368,0.8089622641509434,1.6254503726959229,1.90463387966156,False,False,672.0,0.0,36.0,0.008148407297474998
-70,challenger,degradation,v3,36.479383611120284,2489.48828125,gated,all,1,,,,,,,,,,,
-6,deploy,schedule,v1,16.62007830501534,2486.390625,scheduled,none,2,,,,,,,,,,,
-13,deploy,schedule,v2,12.181431076023728,2488.109375,scheduled,none,2,,,,,,,,,,,
-20,deploy,schedule,v3,20.73749645310454,2532.6484375,scheduled,none,2,,,,,,,,,,,
-27,deploy,schedule,v4,27.076849978184327,2552.796875,scheduled,none,2,,,,,,,,,,,
-34,deploy,schedule,v5,15.323724381858483,2554.171875,scheduled,none,2,,,,,,,,,,,
-41,deploy,schedule,v6,22.49039453989826,2554.1875,scheduled,none,2,,,,,,,,,,,
-48,deploy,schedule,v7,28.743415786884725,2492.34765625,scheduled,none,2,,,,,,,,,,,
-55,deploy,schedule,v8,19.279469456057996,2492.39453125,scheduled,none,2,,,,,,,,,,,
-62,deploy,schedule,v9,28.758018814958632,2492.421875,scheduled,none,2,,,,,,,,,,,
-69,deploy,schedule,v10,29.873425820143893,2492.43359375,scheduled,none,2,,,,,,,,,,,
-76,deploy,schedule,v11,34.56086359685287,2492.4609375,scheduled,none,2,,,,,,,,,,,
-4,deploy,degradation,v1,26.78347223298624,2486.59375,triggered,none,2,,,,,,,,,,,
+12,deploy,accuracy SLO,v2,6.5163053360302,2114.21484375,triggered,none,1,,,,,,,,,,,
+20,recalibrate,,v2,,,triggered,none,1,,,,,,,,,,,
+20,deploy,degradation,v3,6.541552064009011,2122.53515625,triggered,none,1,,,,,,,,,,,
+28,deploy,accuracy SLO,v4,10.819123442983255,2125.46484375,triggered,none,1,,,,,,,,,,,
+36,recalibrate,,v4,,,triggered,none,1,,,,,,,,,,,
+37,deploy,degradation,v5,14.592827080050483,2121.05078125,triggered,none,1,,,,,,,,,,,
+48,deploy,degradation,v6,12.790606506867334,2121.078125,triggered,none,1,,,,,,,,,,,
+56,deploy,accuracy SLO,v7,6.074912388110533,2121.140625,triggered,none,1,,,,,,,,,,,
+64,deploy,accuracy SLO,v8,9.573704270180315,2120.265625,triggered,none,1,,,,,,,,,,,
+4,challenger,degradation,v1,14.695339862955734,2069.984375,gated,none,1,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,none,1,1.306455135345459,1.5016735792160034,0.8958333333333334,3.13554048538208,3.5197339057922363,False,True,0.0,0.0,0.0,
+15,recalibrate,,v0,,,gated,none,1,,,,,,,,,,,
+19,challenger,degradation,v2,10.13319909805432,2135.2421875,gated,none,1,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,none,1,3.2204601764678955,3.6800730228424072,0.8170572916666666,3.185999631881714,3.719569683074951,False,True,0.0,0.0,0.0,
+34,challenger,degradation+accuracy SLO,v3,7.497871113941073,2140.65625,gated,none,1,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,none,1,3.161367177963257,3.6677398681640625,0.8504464285714286,3.922368049621582,3.5584335327148438,True,False,0.0,0.0,0.0,
+49,challenger,degradation,v4,9.366517353104427,2140.6875,gated,none,1,,,,,,,,,,,
+56,reject,degradation,v4,,,gated,none,1,3.1169891357421875,3.325343132019043,0.7593936011904762,3.6486220359802246,3.6337521076202393,False,True,0.0,0.0,0.0,
+64,challenger,degradation+accuracy SLO+age,v5,9.906685455935076,2140.86328125,gated,none,1,,,,,,,,,,,
+71,promote,degradation+accuracy SLO+age,v5,,,gated,none,1,3.9210047721862793,3.72182035446167,0.7892485119047619,3.7821884155273438,3.682877540588379,True,True,0.0,0.0,0.0,
+4,challenger,degradation,v1,14.88096873392351,2054.65625,gated,random,1,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,random,1,1.2854299545288086,1.5070892572402954,0.8881293402777778,3.13554048538208,3.5197339057922363,False,True,14.0,0.0,96.0,0.03255271751965795
+15,recalibrate,,v0,,,gated,random,1,,,,,,,,,,,
+19,challenger,degradation,v2,8.44419940887019,2088.9375,gated,random,1,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,random,1,3.2204601764678955,3.928349733352661,0.7852492559523809,3.185999631881714,3.977687358856201,False,True,14.0,0.0,0.0,0.029029989881174906
+34,challenger,degradation+accuracy SLO,v3,6.065391367068514,2132.5390625,gated,random,1,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,random,1,2.9462828636169434,2.902039051055908,0.8559895833333333,3.922368049621582,3.6435413360595703,True,False,14.0,2.0,288.0,0.02849421330860683
+49,challenger,degradation,v4,9.340765113011003,2094.28125,gated,random,1,,,,,,,,,,,
+56,promote,degradation,v4,,,gated,random,1,3.043584108352661,2.578244686126709,0.7794596354166666,3.6486220359802246,3.466891288757324,True,True,14.0,4.0,480.0,0.029713846743106842
+64,challenger,accuracy SLO,v5,8.0643654409796,2090.61328125,gated,random,1,,,,,,,,,,,
+71,recalibrate,,v4,,,gated,random,1,,,,,,,,,,,
+71,promote,accuracy SLO,v5,,,gated,random,1,3.687694787979126,3.5301315784454346,0.7547200520833334,3.525176525115967,3.2845351696014404,True,True,14.0,4.0,480.0,0.029996602929064205
+4,challenger,degradation,v1,14.042668131180108,2077.578125,gated,disagreement,1,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,disagreement,1,1.306455135345459,1.5016735792160034,0.8958333333333334,3.13554048538208,3.5197339057922363,False,True,14.0,0.0,0.0,0.05679514392146042
+15,recalibrate,,v0,,,gated,disagreement,1,,,,,,,,,,,
+19,challenger,degradation,v2,10.545333544025198,2143.0390625,gated,disagreement,1,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,disagreement,1,3.2204601764678955,3.6800730228424072,0.8170572916666666,3.185999631881714,3.719569683074951,False,True,14.0,0.0,0.0,0.06299256347119808
+34,challenger,degradation+accuracy SLO,v3,9.382875936105847,2148.3828125,gated,disagreement,1,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,disagreement,1,2.803696393966675,2.949136972427368,0.8453125,3.922368049621582,3.5584335327148438,True,False,14.0,3.0,288.0,0.06486512055354458
+49,challenger,degradation,v4,8.891982374014333,2147.3203125,gated,disagreement,1,,,,,,,,,,,
+56,promote,degradation,v4,,,gated,disagreement,1,3.51434063911438,2.9928014278411865,0.81494140625,3.6486220359802246,3.2217600345611572,True,True,14.0,5.0,480.0,0.05812118096011026
+64,challenger,accuracy SLO,v5,7.740459100110456,2145.78125,gated,disagreement,1,,,,,,,,,,,
+71,reject,accuracy SLO,v5,,,gated,disagreement,1,3.2047317028045654,3.1997175216674805,0.7971354166666667,3.380815267562866,3.4104080200195312,False,True,14.0,4.0,192.0,0.054836905162249296
+72,recalibrate,,v4,,,gated,disagreement,1,,,,,,,,,,,
+4,challenger,degradation,v1,13.727355131879449,2109.82421875,gated,all,1,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,all,1,1.2957795858383179,1.490731954574585,0.8963815789473685,3.13554048538208,3.5197339057922363,False,True,672.0,0.0,26.0,0.0070172495075634545
+15,recalibrate,,v0,,,gated,all,1,,,,,,,,,,,
+19,challenger,degradation,v2,9.864422037964687,2171.71484375,gated,all,1,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,all,1,3.2541158199310303,4.229702472686768,0.784689465408805,3.185999631881714,3.951866865158081,False,True,672.0,0.0,36.0,0.006905756890773773
+34,challenger,degradation+accuracy SLO,v3,7.33989973179996,2157.33203125,gated,all,1,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,all,1,2.9107766151428223,3.352694511413574,0.8255733944954129,3.922368049621582,3.8637542724609375,False,True,672.0,111.0,127.0,0.00697284537766661
+49,challenger,degradation,v4,8.108865688787773,2154.53515625,gated,all,1,,,,,,,,,,,
+56,promote,degradation,v4,,,gated,all,1,3.165438175201416,3.030543565750122,0.8102973568281938,3.6486220359802246,3.561415195465088,False,False,672.0,207.0,218.0,0.005732922415648188
+64,challenger,accuracy SLO,v5,7.821356306783855,2151.7734375,gated,all,1,,,,,,,,,,,
+67,recalibrate,,v4,,,gated,all,1,,,,,,,,,,,
+71,promote,accuracy SLO,v5,,,gated,all,1,4.127463340759277,3.8993725776672363,0.7472222222222222,4.140898704528809,3.8092782497406006,True,True,672.0,207.0,222.0,0.006811593526176044
+6,deploy,schedule,v1,7.869759066961706,2059.08984375,scheduled,none,2,,,,,,,,,,,
+13,deploy,schedule,v2,9.811938288854435,2094.46875,scheduled,none,2,,,,,,,,,,,
+20,deploy,schedule,v3,9.57056199782528,2141.82421875,scheduled,none,2,,,,,,,,,,,
+27,deploy,schedule,v4,5.406129258917645,2107.4921875,scheduled,none,2,,,,,,,,,,,
+34,deploy,schedule,v5,6.695072286063805,2104.01171875,scheduled,none,2,,,,,,,,,,,
+41,deploy,schedule,v6,8.948399341898039,2104.05078125,scheduled,none,2,,,,,,,,,,,
+48,deploy,schedule,v7,11.829197148093954,2151.03515625,scheduled,none,2,,,,,,,,,,,
+55,deploy,schedule,v8,5.4988034390844405,2151.1875,scheduled,none,2,,,,,,,,,,,
+62,deploy,schedule,v9,17.67490900005214,2151.203125,scheduled,none,2,,,,,,,,,,,
+69,deploy,schedule,v10,4.254060107050464,2151.2265625,scheduled,none,2,,,,,,,,,,,
+76,deploy,schedule,v11,17.082332387799397,2104.28125,scheduled,none,2,,,,,,,,,,,
+4,deploy,degradation,v1,11.377667156048119,2054.43359375,triggered,none,2,,,,,,,,,,,
 12,recalibrate,,v1,,,triggered,none,2,,,,,,,,,,,
-12,deploy,accuracy SLO,v2,21.20225163293071,2488.5859375,triggered,none,2,,,,,,,,,,,
-21,recalibrate,,v2,,,triggered,none,2,,,,,,,,,,,
-22,deploy,accuracy SLO,v3,21.16838629101403,2491.05859375,triggered,none,2,,,,,,,,,,,
-30,deploy,accuracy SLO,v4,18.42354468209669,2492.98828125,triggered,none,2,,,,,,,,,,,
-38,deploy,degradation,v5,28.490960331168026,2535.9609375,triggered,none,2,,,,,,,,,,,
-67,deploy,accuracy SLO,v6,16.658922648988664,2493.0703125,triggered,none,2,,,,,,,,,,,
-4,challenger,degradation,v1,21.622501424048096,2486.69921875,gated,none,2,,,,,,,,,,,
-11,recalibrate,,v0,,,gated,none,2,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,none,2,1.2781908512115479,1.524152159690857,0.8938802083333334,1.261113166809082,1.4519414901733398,False,True,0.0,0.0,0.0,
-48,challenger,degradation,v2,23.71754022804089,2493.08203125,gated,none,2,,,,,,,,,,,
-53,recalibrate,,v0,,,gated,none,2,,,,,,,,,,,
-55,reject,degradation,v2,,,gated,none,2,1.2240030765533447,1.636303186416626,0.7712983630952381,1.7711451053619385,1.7031188011169434,False,True,0.0,0.0,0.0,
-63,challenger,degradation+age,v3,23.301733281929046,2493.13671875,gated,none,2,,,,,,,,,,,
-70,reject,degradation+age,v3,,,gated,none,2,1.6753199100494385,1.9716417789459229,0.8085007440476191,1.8043776750564575,1.94849693775177,,,0.0,0.0,0.0,
-4,challenger,degradation,v1,26.023108194116503,2486.78515625,gated,random,2,,,,,,,,,,,
-11,recalibrate,,v0,,,gated,random,2,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,random,2,1.2781908512115479,1.524152159690857,0.8938802083333334,1.261113166809082,1.4519414901733398,False,True,14.0,0.0,0.0,0.032462578799043386
-48,challenger,degradation,v2,26.190543997101486,2493.1484375,gated,random,2,,,,,,,,,,,
-53,recalibrate,,v0,,,gated,random,2,,,,,,,,,,,
-55,reject,degradation,v2,,,gated,random,2,1.3044458627700806,1.504690408706665,0.816015625,1.7711451053619385,1.7031188011169434,False,True,14.0,4.0,288.0,0.031846841531140466
-63,challenger,degradation+age,v3,13.323577717877924,2492.63671875,gated,random,2,,,,,,,,,,,
-70,reject,degradation+age,v3,,,gated,random,2,2.003390312194824,2.2855582237243652,0.8317057291666666,1.8043776750564575,2.034099578857422,,,14.0,3.0,384.0,0.0333596087460007
-4,challenger,degradation,v1,21.75001387600787,2486.83984375,gated,disagreement,2,,,,,,,,,,,
-11,recalibrate,,v0,,,gated,disagreement,2,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,disagreement,2,1.2781908512115479,1.524152159690857,0.8938802083333334,1.261113166809082,1.4519414901733398,False,True,14.0,0.0,0.0,0.049849706036703925
-48,challenger,degradation,v2,23.497817249037325,2493.19921875,gated,disagreement,2,,,,,,,,,,,
-53,recalibrate,,v0,,,gated,disagreement,2,,,,,,,,,,,
-55,reject,degradation,v2,,,gated,disagreement,2,1.4528160095214844,1.5783287286758423,0.8541666666666666,1.7711451053619385,1.7031188011169434,False,True,14.0,6.0,576.0,0.06460528155522686
-63,challenger,degradation+age,v3,13.08353056712076,2492.4296875,gated,disagreement,2,,,,,,,,,,,
-70,reject,degradation+age,v3,,,gated,disagreement,2,1.8116437196731567,2.1090168952941895,0.8256510416666667,1.8043776750564575,1.9942021369934082,,,14.0,3.0,288.0,0.054329567189727514
-4,challenger,degradation,v1,21.413807325065136,2486.87890625,gated,all,2,,,,,,,,,,,
-11,recalibrate,,v0,,,gated,all,2,,,,,,,,,,,
-11,reject,degradation,v1,,,gated,all,2,1.2766928672790527,1.5250601768493652,0.8941107644305772,1.261113166809082,1.4519414901733398,False,True,672.0,0.0,31.0,0.007472732769591468
-48,challenger,degradation,v2,25.120013328036293,2491.76953125,gated,all,2,,,,,,,,,,,
-53,recalibrate,,v0,,,gated,all,2,,,,,,,,,,,
-55,reject,degradation,v2,,,gated,all,2,1.3538411855697632,1.5074498653411865,0.8419444444444445,1.7711451053619385,1.7124773263931274,False,True,672.0,207.0,222.0,0.006962866921510015
-63,challenger,degradation+age,v3,26.617937587900087,2490.22265625,gated,all,2,,,,,,,,,,,
-70,reject,degradation+age,v3,,,gated,all,2,1.7466591596603394,2.05977463722229,0.806935817805383,1.8043776750564575,2.045628070831299,,,672.0,176.0,189.0,0.008658572499241148
+12,deploy,accuracy SLO,v2,9.589459190145135,2128.375,triggered,none,2,,,,,,,,,,,
+20,recalibrate,,v2,,,triggered,none,2,,,,,,,,,,,
+20,deploy,degradation,v3,9.556661745067686,2132.34375,triggered,none,2,,,,,,,,,,,
+28,deploy,accuracy SLO,v4,6.523998302174732,2136.34765625,triggered,none,2,,,,,,,,,,,
+37,deploy,degradation,v5,11.29400792508386,2137.21875,triggered,none,2,,,,,,,,,,,
+45,recalibrate,,v5,,,triggered,none,2,,,,,,,,,,,
+45,deploy,accuracy SLO,v6,11.179694489110261,2137.296875,triggered,none,2,,,,,,,,,,,
+53,deploy,accuracy SLO,v7,7.22465911693871,2098.78515625,triggered,none,2,,,,,,,,,,,
+61,deploy,accuracy SLO,v8,9.51080591394566,2098.9140625,triggered,none,2,,,,,,,,,,,
+69,deploy,accuracy SLO,v9,4.31668427400291,2098.91796875,triggered,none,2,,,,,,,,,,,
+4,challenger,degradation,v1,11.440940214088187,2071.40625,gated,none,2,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,none,2,1.3040302991867065,1.5172336101531982,0.8934151785714286,2.9859907627105713,3.531951904296875,False,True,0.0,0.0,0.0,
+19,challenger,degradation,v2,9.209998249076307,2105.8359375,gated,none,2,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,none,2,3.200122594833374,3.8419535160064697,0.7935267857142857,3.19538950920105,3.8953635692596436,False,True,0.0,0.0,0.0,
+34,challenger,degradation+accuracy SLO,v3,6.773799892049283,2106.26953125,gated,none,2,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,none,2,3.219250202178955,3.754404067993164,0.8345424107142857,3.9518585205078125,3.629549741744995,True,False,0.0,0.0,0.0,
+49,challenger,degradation,v4,9.155057011870667,2109.734375,gated,none,2,,,,,,,,,,,
+55,recalibrate,,v0,,,gated,none,2,,,,,,,,,,,
+56,reject,degradation,v4,,,gated,none,2,2.988619089126587,3.618051528930664,0.8098028273809523,3.6658999919891357,3.566664218902588,False,True,0.0,0.0,0.0,
+64,challenger,degradation+accuracy SLO+age,v5,9.663212713086978,2111.671875,gated,none,2,,,,,,,,,,,
+71,promote,degradation+accuracy SLO+age,v5,,,gated,none,2,4.001277446746826,3.7381205558776855,0.7819010416666666,3.5928776264190674,3.564328193664551,True,True,0.0,0.0,0.0,
+4,challenger,degradation,v1,11.306489044101909,2069.28125,gated,random,2,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,random,2,1.3040302991867065,1.5172336101531982,0.8934151785714286,2.9859907627105713,3.531951904296875,False,True,14.0,0.0,0.0,0.05323246919683048
+19,challenger,degradation,v2,9.603476762073115,2103.50390625,gated,random,2,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,random,2,3.1577086448669434,3.8509395122528076,0.7820095486111112,3.19538950920105,3.8953635692596436,False,True,14.0,0.0,96.0,0.029582297429442406
+34,challenger,degradation+accuracy SLO,v3,7.658620573114604,2151.015625,gated,random,2,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,random,2,2.5309970378875732,2.865844249725342,0.8412760416666667,3.9518585205078125,3.6286396980285645,True,False,14.0,1.0,192.0,0.03494641610554287
+49,challenger,degradation,v4,12.470536958891898,2104.3515625,gated,random,2,,,,,,,,,,,
+55,recalibrate,,v0,,,gated,random,2,,,,,,,,,,,
+56,promote,degradation,v4,,,gated,random,2,2.9391098022460938,2.8231430053710938,0.8224283854166666,3.6658999919891357,3.303877592086792,True,True,14.0,3.0,384.0,0.03170987058963094
+64,challenger,accuracy SLO,v5,6.187359677860513,2102.42578125,gated,random,2,,,,,,,,,,,
+71,recalibrate,,v4,,,gated,random,2,,,,,,,,,,,
+71,reject,accuracy SLO,v5,,,gated,random,2,3.7125635147094727,3.668093681335449,0.7644856770833334,3.217578172683716,3.4650399684906006,False,True,14.0,5.0,384.0,0.030158453487924168
+4,challenger,degradation,v1,11.208348430227488,2099.96875,gated,disagreement,2,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,disagreement,2,1.3040302991867065,1.5172336101531982,0.8934151785714286,2.9859907627105713,3.531951904296875,False,True,14.0,0.0,0.0,0.06143525908035891
+19,challenger,degradation,v2,9.044829848920926,2128.70703125,gated,disagreement,2,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,disagreement,2,3.200122594833374,3.8419535160064697,0.7935267857142857,3.19538950920105,3.8953635692596436,False,True,14.0,0.0,0.0,0.05780662676053388
+34,challenger,degradation+accuracy SLO,v3,6.672963029006496,2134.15625,gated,disagreement,2,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,disagreement,2,2.8939201831817627,3.0226364135742188,0.8343098958333334,3.9518585205078125,3.629549741744995,True,False,14.0,3.0,384.0,0.05784800409206322
+49,challenger,degradation,v4,8.2052415269427,2170.20703125,gated,disagreement,2,,,,,,,,,,,
+55,recalibrate,,v0,,,gated,disagreement,2,,,,,,,,,,,
+56,promote,degradation,v4,,,gated,disagreement,2,3.409052848815918,2.939425230026245,0.8211263020833334,3.6658999919891357,3.3193912506103516,True,True,14.0,5.0,576.0,0.05653384141623974
+64,challenger,accuracy SLO,v5,5.79919504490681,2166.4921875,gated,disagreement,2,,,,,,,,,,,
+71,recalibrate,,v4,,,gated,disagreement,2,,,,,,,,,,,
+71,promote,accuracy SLO,v5,,,gated,disagreement,2,3.7980263233184814,3.612212896347046,0.7820638020833334,3.6490626335144043,3.5176799297332764,True,True,14.0,4.0,480.0,0.05955355507986886
+4,challenger,degradation,v1,12.80533698410727,2063.88671875,gated,all,2,,,,,,,,,,,
+11,reject,degradation,v1,,,gated,all,2,1.3044923543930054,1.5180476903915405,0.8943057722308893,2.9859907627105713,3.531951904296875,False,True,672.0,0.0,31.0,0.0058501360139676505
+19,challenger,degradation,v2,6.8989054600242525,2096.53125,gated,all,2,,,,,,,,,,,
+26,reject,degradation,v2,,,gated,all,2,3.1961171627044678,4.5376152992248535,0.7702060221870047,3.19538950920105,4.308745384216309,False,True,672.0,0.0,41.0,0.007748570559280259
+34,challenger,degradation+accuracy SLO,v3,6.263227203860879,2142.3046875,gated,all,2,,,,,,,,,,,
+41,reject,degradation+accuracy SLO,v3,,,gated,all,2,2.8696820735931396,3.537033796310425,0.8189814814814815,3.9518585205078125,3.867051601409912,False,True,672.0,111.0,132.0,0.006804109684058598
+49,challenger,degradation,v4,9.264846678823233,2136.4609375,gated,all,2,,,,,,,,,,,
+55,recalibrate,,v0,,,gated,all,2,,,,,,,,,,,
+56,promote,degradation,v4,,,gated,all,2,3.1447997093200684,3.0792131423950195,0.7995309050772627,3.6658999919891357,3.603139877319336,False,False,672.0,207.0,219.0,0.007303963814462934
+64,challenger,accuracy SLO,v5,5.997096699895337,2090.48046875,gated,all,2,,,,,,,,,,,
+69,recalibrate,,v4,,,gated,all,2,,,,,,,,,,,
+71,promote,accuracy SLO,v5,,,gated,all,2,4.243025779724121,3.813337802886963,0.7512362637362637,4.101786136627197,3.75978946685791,True,True,672.0,207.0,217.0,0.007818519536937987
