@@ -1,0 +1,6 @@
+Model Variant,Params,Weights (KiB),VRAM Peak,Active RSS (MiB)
+DLinear FP32 (Original Model),64626,254.3,0.0 MiB (CPU),591.8
+DLinear FP32 (Updated Robust Model),64626,254.3,0.0 MiB (CPU),591.8
+DLinear INT8 (Quantized),64626,67.2,0.0 MiB (CPU),593.2
+DLinear + InputSanitizer,64626,254.3,0.0 MiB (CPU),593.4
+Stacking Ensemble (DLinear+Ridge),76674,320.1,0.0 MiB (CPU),595.6

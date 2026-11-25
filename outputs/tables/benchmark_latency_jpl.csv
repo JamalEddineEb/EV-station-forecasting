@@ -1,0 +1,7 @@
+Pipeline / Runtime,Single p50 (ms),Single p90 (ms),Batch p50 (ms),Batch p90 (ms),Throughput (samples/s),Process RSS (MiB)
+DLinear FP32 (Original Clean),0.138,0.146,1.264,1.43,49484.4,676.1
+DLinear FP32 (Updated Robust with Jittering),0.157,0.168,1.271,1.438,48047.2,676.1
+DLinear Dynamic INT8 (Quantized),0.266,0.276,1.127,1.14,56386.2,676.1
+DLinear + InputSanitizer (Robust Pipeline),0.229,0.24,1.553,1.565,41107.2,676.1
+Stacking Ensemble (DLinear + Ridge),0.314,0.325,1.608,1.619,39694.8,676.1
+DLinear FP32 (Corrupted Input + Sanitizer),0.269,0.278,1.858,2.114,32876.6,676.1

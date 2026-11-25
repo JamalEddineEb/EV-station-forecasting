@@ -1,0 +1,14 @@
+Test Condition,MAE [95% CI],RMSE [95% CI],Acc (<=1 car),Acc (<=2 cars),Raw 80% Cov,Calibrated 80% Cov,Mean Width
+Clean: Original Model (Uncalibrated Raw),"1.8437 [1.8132, 1.8834]","3.1912 [3.1147, 3.2851]",51.0%,72.4%,0.703,N/A (Raw),5.47
+Clean: Original Model (Conformal Split-CQR),"1.8437 [1.8132, 1.8834]","3.1912 [3.1147, 3.2851]",51.0%,72.4%,0.703,0.800,6.26
+Clean: Updated Robust Model (Trained Jittering),"1.8442 [1.8142, 1.8830]","3.1587 [3.0842, 3.2462]",50.8%,72.1%,0.729,0.808,6.47
+Clean: Stacking Ensemble (DLinear + Ridge),"1.7899 [1.7604, 1.8249]","2.9553 [2.8869, 3.0348]",49.2%,71.8%,0.714,0.815,5.55
+Clean: Confidence Abstention (90% Retained),"1.5623 [1.5343, 1.5879]","2.5569 [2.4943, 2.6183]",54.2%,76.0%,0.704,0.806,5.33
+Corrupted Telemetry (Without Sanitizer),FAILED (NaN crash on 50 windows),FAILED (NaN scale division),0.0%,0.0%,0.000,0.000,N/A
+Corrupted Telemetry (With InputSanitizer),"1.7501 [1.6178, 1.8934]","2.6607 [2.4358, 2.9198]",49.3%,70.9%,0.678,0.780,5.46
+Random Bounded Noise (eps=1.0 car),"1.7359 [1.6270, 1.8510]","2.5163 [2.3697, 2.6744]",46.5%,70.4%,0.657,0.760,5.47
+White-Box FGSM Attack (eps=1.0 car),"4.2774 [4.1112, 4.4488]","5.1613 [4.9649, 5.3644]",12.0%,22.9%,0.415,0.479,6.64
+White-Box PGD-7 (eps=1.0 car) [Original Model Defenseless],"4.5649 [4.4133, 4.7152]","5.2661 [5.0818, 5.4548]",5.1%,12.0%,0.307,0.320,5.50
+White-Box PGD-7 (eps=1.0 car) [Updated Robust Model],"4.8092 [4.6453, 4.9837]","5.6301 [5.4390, 5.8357]",5.0%,15.0%,0.318,0.332,6.46
+White-Box PGD-7 Attack [With Stacking Ensemble Defense],"4.3875 [4.2277, 4.5503]","5.0763 [4.8892, 5.2781]",6.5%,15.4%,0.208,0.252,4.99
+White-Box PGD-7 Attack [With Confidence Abstention],"4.5138 [4.3618, 4.6676]","5.2092 [5.0210, 5.3974]",5.2%,12.1%,0.293,0.306,5.16
