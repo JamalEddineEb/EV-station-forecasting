@@ -1,0 +1,13 @@
+check,group,warn,alert,bad,on_alert,meaning
+missing_fields,Schema,1.0,1.0,high,page,a required field is missing (e.g. renamed upstream)
+new_fields,Schema,1.0,inf,high,page,an unknown field appeared (usually the other half of a rename)
+null_pct,Completeness,0.5,2.0,high,page,% of sessions with an empty required field (training: 0%)
+volume_ratio,Completeness,0.6,0.3,low,page,sessions this week / median of the last 4 good weeks
+dead_weekdays,Completeness,1.0,2.0,high,page,working days with zero arrivals = ingestion outage
+invalid_pct,Validity,1.0,5.0,high,page,"% impossible sessions (ends before start, kWh < 0 or > 100)"
+duplicate_pct,Validity,0.01,2.0,high,page,% of session IDs received twice
+new_ports,Categories,1.0,5.0,high,page,charging ports never seen before = capacity changed
+psi_vs_recent,Drift,0.1,0.25,high,page,occupancy distribution vs the last 4 good weeks (sudden change)
+hour_corr,Drift,0.9,0.75,low,page,daily occupancy curve vs the last 4 good weeks (clock/timezone bug)
+psi_vs_train,Drift,0.1,0.25,high,ticket,occupancy distribution vs training data (regime change)
+psi_scale,Drift,0.1,0.25,high,ticket,model input scale s_i (trailing-day mean + 0.5) vs training
