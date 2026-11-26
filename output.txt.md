@@ -1400,139 +1400,399 @@ print(f"decision delay: {SHADOW_DAYS} days of shadow after each alert (plus the 
 ```python
 import tracemalloc
 
-# 1. Measure incremental memory of a single challenger update (ΔRSS and peak Python allocation)
+# Filter M3 test origins to exclude NaNs in both series and drifted_s1
+test_o = d["test_origins"]
+clean_th, clean_tc, clean_ty = windows(test_o, series)
+s1_th, s1_tc, s1_ty = windows(test_o, drifted_s1)
+valid_mask = ~(
+    np.isnan(clean_th).any(axis=1) | np.isnan(clean_ty).any(axis=1) |
+    np.isnan(s1_th).any(axis=1) | np.isnan(s1_ty).any(axis=1)
+)
+clean_th, clean_tc, clean_ty = clean_th[valid_mask], clean_tc[valid_mask], clean_ty[valid_mask]
+s1_th, s1_tc, s1_ty = s1_th[valid_mask], s1_tc[valid_mask], s1_ty[valid_mask]
+
+# 1. Measure incremental memory of a single challenger update (post-surge promoted model on 28 Feb / day 72)
 rss_before = peak_rss_mib()
 tracemalloc.start()
-m_v4 = train(ONSET + 48 * DAY, seed=0)  # 20 June promotion cutoff (day 48 post-onset)
+m_post = train(ONSET + 72 * DAY, seed=0)
 _, tracemalloc_peak_bytes = tracemalloc.get_traced_memory()
 tracemalloc.stop()
 rss_delta_mib = max(0.0, peak_rss_mib() - rss_before)
 tracemalloc_peak_mib = tracemalloc_peak_bytes / (2 ** 20)
 
-# 2. Evaluate post-surge promoted model (v4) on the original clean M3 test set (backward transfer)
-clean_th, clean_tc, clean_ty = windows(d["test_origins"], series)
-pt_clean, lo_clean, hi_clean = raw_interval(m_v4, clean_th, clean_tc)
+# 2. Evaluate post-surge promoted model on clean M3 test windows (backward transfer) and Stage-1 ToU shift
+pt_clean, lo_clean, hi_clean = raw_interval(m_post, clean_th, clean_tc)
 clean_mae_after = float(np.abs(clean_ty - pt_clean).mean())
-q_clean = m_v4["cqr"]
+q_clean = m_post["cqr"]
 clean_cov_after = float(((clean_ty >= lo_clean - q_clean) & (clean_ty <= hi_clean + q_clean)).mean())
 
-# Also evaluate v4 on Stage 1 phase-shifted test split (2.5h ToU shift without surge)
-s1_th, s1_tc, s1_ty = windows(d["test_origins"], drifted_s1)
-pt_s1, lo_s1, hi_s1 = raw_interval(m_v4, s1_th, s1_tc)
+pt_s1, lo_s1, hi_s1 = raw_interval(m_post, s1_th, s1_tc)
 s1_mae_after = float(np.abs(s1_ty - pt_s1).mean())
 s1_cov_after = float(((s1_ty >= lo_s1 - q_clean) & (s1_ty <= hi_s1 + q_clean)).mean())
 
+print(f"Evaluated on {valid_mask.sum():,} valid M3 test windows")
 print(f"Update memory: ΔRSS = {rss_delta_mib:.2f} MiB, tracemalloc peak = {tracemalloc_peak_mib:.2f} MiB")
-print(f"Clean test set (M3 split) after v4 promotion: MAE = {clean_mae_after:.3f}, coverage = {clean_cov_after:.1%}")
-print(f"Stage-1 ToU shift test set after v4 promotion: MAE = {s1_mae_after:.3f}, coverage = {s1_cov_after:.1%}")
+print(f"Clean test set (M3 split) after post-surge promotion: MAE = {clean_mae_after:.3f}, coverage = {clean_cov_after:.1%}")
+print(f"Stage-1 ToU shift test set after post-surge promotion: MAE = {s1_mae_after:.3f}, coverage = {s1_cov_after:.1%}")
 ```
 
-
-    ---------------------------------------------------------------------------
-
-    ValueError                                Traceback (most recent call last)
-
-    Cell In[34], line 21
-         17 clean_cov_after = float(((clean_ty >= lo_clean - q_clean) & (clean_ty <= hi_clean + q_clean)).mean())
-         18 
-         19 # Also evaluate v4 on Stage 1 phase-shifted test split (2.5h ToU shift without surge)
-         20 s1_th, s1_tc, s1_ty = windows(d["test_origins"], drifted_s1)
-    ---> 21 pt_s1, lo_s1, hi_s1 = raw_interval(m_v4, s1_th, s1_tc)
-         22 s1_mae_after = float(np.abs(s1_ty - pt_s1).mean())
-         23 s1_cov_after = float(((s1_ty >= lo_s1 - q_clean) & (s1_ty <= hi_s1 + q_clean)).mean())
-         24 
+    Evaluated on 12,260 valid M3 test windows
+    Update memory: ΔRSS = 43.62 MiB, tracemalloc peak = 130.87 MiB
+    Clean test set (M3 split) after post-surge promotion: MAE = 2.249, coverage = 73.8%
+    Stage-1 ToU shift test set after post-surge promotion: MAE = 2.189, coverage = 74.2%
 
 
-    Cell In[22], line 15, in raw_interval(model, hist, cal)
-         12 def raw_interval(model, hist, cal):
-         13     # stacked median and the 80% interval before the Split-CQR correction
-         14     dl = dlinear_forecast(model["dlinear"], hist, cal)
-    ---> 15     rd = model["ridge"].predict(model["scaler"].transform(ridge_features(hist, cal)))
-         16     point = np.column_stack([m.predict(np.c_[dl[:, h, 1], rd[:, h]]) for h, m in enumerate(model["stack"])])
-         17     half = 0.5 * (dl[..., 2] - dl[..., 0])
-         18     return point, np.maximum(point - half, 0), np.minimum(point + half, CAPACITY)
+
+```python
+import numpy as np
+import pandas as pd
+from joblib import Parallel, delayed
+
+logs = pd.read_csv(f"{OUT}/daily_{SITE}.csv")
+NAMES = {("stale", "none"): "stale", ("scheduled", "none"): "scheduled", ("triggered", "none"): "triggered",
+         ("gated", "none"): "gated", ("gated", "random"): "gated + random review",
+         ("gated", "disagreement"): "gated + disagreement review", ("gated", "all"): "gated + review all"}
+logs["setup"] = [NAMES[k] for k in zip(logs["policy"], logs["review"])]
+
+def seed_mae_table(df):
+    return df.groupby(["setup", "seed"]).apply(lambda g: g["err"].sum() / g["n"].sum()).unstack("seed")
+
+full_seed = seed_mae_table(logs)
+post_seed = seed_mae_table(logs[logs["day"] >= 72])
+print("Per-seed MAE (all 127 days):")
+print(full_seed.round(4))
+print("\nPaired delta (disagreement - baseline) per seed, all 127 days:")
+for base in ["stale", "scheduled", "triggered", "gated", "gated + random review", "gated + review all"]:
+    diff = full_seed.loc["gated + disagreement review"] - full_seed.loc[base]
+    print(f"vs {base:24s}: seeds={np.round(diff.values, 4)} | mean={diff.mean():+.4f} | std={diff.std():+.4f}")
+
+print("\nPer-seed MAE (post-adaptation, days 72-126):")
+print(post_seed.round(4))
+
+def simulate_ablation(mode, seed):
+    rng = np.random.default_rng(1000 * seed + 17)
+    review = "all" if mode == "review_all_day" else "disagreement"
+    champ, n_versions = start_models[seed], 1
+    quarantine = np.zeros(T, bool)
+    log, events, psi_flags = [], [], []
+    cal_day, cooldown, shadow = 0, 0, None
+
+    def new_challenger(day, reason):
+        nonlocal n_versions
+        use_q = quarantine if mode in ("buffer_only", "review_all_day") else None
+        model = train(ONSET + (day + 1) * DAY, seed * 1000 + day + 1, use_q)
+        v = make_version(model, f"v{n_versions}", day + 1, reason)
+        n_versions += 1
+        return v
+
+    for day in range(REPLAY_DAYS):
+        rows = day_rows[day]
+        y = RY[rows]
+        log.append({"mode": mode, "seed": seed, "day": day, "version": champ["id"], "n": y.size,
+                    "err": float(np.abs(y - champ["point"][rows]).sum()),
+                    "cov": float(((y >= champ["lo"][rows] - champ["q"]) & (y <= champ["hi"][rows] + champ["q"])).sum()),
+                    "naive": float(np.abs(y - NAIVE[rows]).sum())})
+        mae7, cov7, naive7, ndays = rolling(log, champ["id"], len(log) - 1)
+        if day - cal_day >= 7 and not (COVERAGE_BAND[0] <= cov7 <= COVERAGE_BAND[1]):
+            recent = np.concatenate([day_rows[k] for k in range(max(0, day - 6), day + 1)])
+            champ = {**champ, "q": cqr_offset(RY[recent], champ["lo"][recent], champ["hi"][recent])}
+            cal_day = day
+
+        reasons = []
+        if shadow is None and day >= cooldown:
+            hist = [rolling(log, champ["id"], len(log) - 1 - k) for k in range(STREAK)]
+            if all(h[3] >= 3 and h[0] > DEGRADE * champ["ref"] for h in hist):
+                reasons.append("degradation")
+            if all(h[3] >= 3 and h[0] > NAIVE_SLO * h[2] for h in hist):
+                reasons.append("accuracy SLO")
+            if day - cal_day >= 14 and not (COVERAGE_BAND[0] <= cov7 <= COVERAGE_BAND[1]):
+                reasons.append("coverage")
+            if (day + 1) % 7 == 0:
+                ref = drifted[champ["buffer"][0]:champ["buffer"][1]]
+                cur = drifted[ONSET + (day - 6) * DAY:ONSET + (day + 1) * DAY]
+                psi_flags.append(psi(ref[~np.isnan(ref)], cur) > PSI_ALERT)
+                if len(psi_flags) >= 2 and psi_flags[-1] and psi_flags[-2]:
+                    reasons.append("data drift")
+            if day + 1 - champ["day"] >= MAX_AGE_DAYS:
+                reasons.append("age")
+
+        if reasons:
+            if set(reasons) <= {"degradation", "accuracy SLO"}:
+                days7 = range(max(0, day - 6), day + 1)
+                bad = {k for k in days7 if day_abnormal[k] ^ (rng.random() < ERROR_RATE)}
+                m, _, nv, nd = rolling(log, champ["id"], len(log) - 1, skip_days=bad)
+                if nd == 0 or (m <= DEGRADE * champ["ref"] and m <= NAIVE_SLO * nv):
+                    cooldown = day + 3
+                    reasons = []
+            if reasons:
+                chal = new_challenger(day, "+".join(reasons))
+                shadow = {"v": chal, "start": day + 1, "rows": [], "tagged": []}
+                continue
+
+        if shadow is not None and day >= shadow["start"]:
+            chal = shadow["v"]
+            shadow["rows"].extend(rows)
+            picked = pick_reviews(review, rows, champ, chal, rng)
+            tags = operator_says_abnormal(picked, rng)
+            if mode == "review_all_day":
+                if tags.mean() > 0.5:
+                    d_rows = day_rows[day]
+                    shadow["tagged"].extend(d_rows.tolist())
+                    quarantine[replay_o[d_rows[0]]:replay_o[d_rows[-1]] + H] = True
+            else:
+                for i, tag in zip(picked, tags):
+                    if tag:
+                        d_rows = day_rows[day_of[i]]
+                        if mode == "s_only":
+                            shadow["tagged"].extend(d_rows.tolist())
+                        elif mode == "buffer_only":
+                            quarantine[replay_o[d_rows[0]]:replay_o[d_rows[-1]] + H] = True
+
+            if day == shadow["start"] + SHADOW_DAYS - 1:
+                S = np.setdiff1d(np.asarray(shadow["rows"]), np.asarray(shadow["tagged"], dtype=int))
+                a, b = stats(champ, S), stats(chal, S)
+                promote = b["mae"] <= MARGIN * a["mae"]
+                if promote:
+                    chal = {**chal, "q": cqr_offset(RY[S], chal["lo"][S], chal["hi"][S])}
+                future = np.flatnonzero((day_of > day) & (day_of <= day + 28) & ~win_abnormal)
+                hindsight = bool(stats(chal, future)["mae"] < stats(champ, future)["mae"]) if len(future) >= 3 * DAY else None
+                events.append({"mode": mode, "seed": seed, "event": "promote" if promote else "reject",
+                               "correct": None if hindsight is None else promote == hindsight})
+                if promote:
+                    champ, cal_day = chal, day + 1
+                    psi_flags.clear()
+                cooldown, shadow = day + 1 + COOLDOWN_DAYS, None
+
+    return pd.DataFrame(log), pd.DataFrame(events)
+
+abl_tasks = [(m, s) for m in ["s_only", "buffer_only", "review_all_day"] for s in SEEDS]
+abl_res = Parallel(n_jobs=min(9, n_jobs))(delayed(simulate_ablation)(m, s) for m, s in abl_tasks)
+abl_logs = pd.concat([r[0] for r in abl_res], ignore_index=True)
+abl_ev = pd.concat([r[1] for r in abl_res], ignore_index=True)
+
+print("\nQuarantine Ablations (mean +- std across 3 seeds):")
+for m in ["s_only", "buffer_only", "review_all_day"]:
+    sub = abl_logs[abl_logs["mode"] == m]
+    s_mae = sub.groupby("seed").apply(lambda g: g["err"].sum() / g["n"].sum())
+    s_cov = sub.groupby("seed").apply(lambda g: g["cov"].sum() / g["n"].sum())
+    ev_m = abl_ev[abl_ev["mode"] == m]
+    dec_m = ev_m[ev_m["correct"].notna()]
+    n_prom = (ev_m["event"] == "promote").sum() / len(SEEDS)
+    n_rej = (ev_m["event"] == "reject").sum() / len(SEEDS)
+    print(f"{m:15s}: MAE={s_mae.mean():.3f} +- {s_mae.std():.3f} | Cov={s_cov.mean():.1%} | "
+          f"Prom={n_prom:.2f}, Rej={n_rej:.2f} | Right={int(dec_m['correct'].astype(bool).sum())}/{len(dec_m)}")
+```
+
+    Per-seed MAE (all 127 days):
+    seed                              0       1       2
+    setup                                              
+    gated                        2.8239  2.8122  2.8076
+    gated + disagreement review  2.5942  2.5132  2.4993
+    gated + random review        2.5930  2.5241  2.5276
+    gated + review all           2.6349  2.9096  2.8945
+    scheduled                    2.6204  2.5903  2.6188
+    stale                        2.6584  2.5522  2.5241
+    triggered                    2.6092  2.5989  2.6372
+    
+    Paired delta (disagreement - baseline) per seed, all 127 days:
+    vs stale                   : seeds=[-0.0642 -0.039  -0.0248] | mean=-0.0427 | std=+0.0200
+    vs scheduled               : seeds=[-0.0262 -0.0771 -0.1195] | mean=-0.0743 | std=+0.0467
+    vs triggered               : seeds=[-0.015  -0.0857 -0.138 ] | mean=-0.0795 | std=+0.0617
+    vs gated                   : seeds=[-0.2298 -0.299  -0.3083] | mean=-0.2790 | std=+0.0429
+    vs gated + random review   : seeds=[ 0.0012 -0.0109 -0.0283] | mean=-0.0127 | std=+0.0148
+    vs gated + review all      : seeds=[-0.0407 -0.3964 -0.3952] | mean=-0.2774 | std=+0.2050
+    
+    Per-seed MAE (post-adaptation, days 72-126):
+    seed                              0       1       2
+    setup                                              
+    gated                        2.7244  2.6998  2.6977
+    gated + disagreement review  2.7912  2.6954  2.6886
+    gated + random review        2.7885  2.7205  2.7539
+    gated + review all           2.8851  2.8147  2.8083
+    scheduled                    2.7422  2.7010  2.7650
+    stale                        2.9394  2.7854  2.7459
+    triggered                    2.6757  2.6772  2.7672
 
 
-    File ~/miniconda3/envs/py312/lib/python3.12/site-packages/sklearn/linear_model/_ridge.py:1279, in Ridge.predict(self, X)
-       1265 def predict(self, X):
-       1266     """
-       1267     Predict using the linear model.
-       1268 
-       (...)   1277         Predicted values.
-       1278     """
-    -> 1279     return super().predict(X)
+    
+    Quarantine Ablations (mean +- std across 3 seeds):
+    s_only         : MAE=2.579 +- 0.013 | Cov=79.7% | Prom=2.67, Rej=4.33 | Right=13/21
+    buffer_only    : MAE=2.886 +- 0.017 | Cov=78.7% | Prom=5.00, Rej=2.00 | Right=13/21
+    review_all_day : MAE=2.560 +- 0.030 | Cov=79.5% | Prom=1.00, Rej=6.33 | Right=14/22
 
 
-    File ~/miniconda3/envs/py312/lib/python3.12/site-packages/sklearn/linear_model/_base.py:316, in LinearModel.predict(self, X)
-        302 """
-        303 Predict using the linear model.
-        304 
-       (...)    313     Predicted values.
-        314 """
-        315 check_same_namespace(X, self, attribute="coef_", method="predict")
-    --> 316 return self._decision_function(X)
 
+```python
+import numpy as np
+import pandas as pd
+from joblib import Parallel, delayed
 
-    File ~/miniconda3/envs/py312/lib/python3.12/site-packages/sklearn/linear_model/_base.py:294, in LinearModel._decision_function(self, X)
-        291 def _decision_function(self, X):
-        292     check_is_fitted(self)
-    --> 294     X = validate_data(self, X, accept_sparse=["csr", "csc", "coo"], reset=False)
-        295     coef_ = self.coef_
-        296     if coef_.ndim == 1:
+events = pd.read_csv(f"{OUT}/events_{SITE}.csv")
+effort = pd.read_csv(f"{OUT}/effort_{SITE}.csv")
+NAMES = {("stale", "none"): "stale", ("scheduled", "none"): "scheduled", ("triggered", "none"): "triggered",
+         ("gated", "none"): "gated", ("gated", "random"): "gated + random review",
+         ("gated", "disagreement"): "gated + disagreement review", ("gated", "all"): "gated + review all"}
+events["setup"] = [NAMES[k] for k in zip(events["policy"], events["review"])]
+effort["setup"] = [NAMES[k] for k in zip(effort["policy"], effort["review"])]
 
+# 1. Exact operator-minutes breakdown per seed
+for setup in ["gated + random review", "gated + disagreement review", "gated + review all"]:
+    ev = events[events["setup"] == setup]
+    n_alerts = ev[ev["event"].isin(["challenger", "alert dismissed"])].groupby("seed").apply(
+        lambda g: sum(set(r.split("+")) <= {"degradation", "accuracy SLO"} for r in g["reason"])
+    ).mean()
+    n_dec = ev[ev["event"].isin(["promote", "reject"])].groupby("seed").size().mean()
+    tot_min = effort[effort["setup"] == setup]["operator minutes"].mean()
+    alert_min = n_alerts * MINUTES["alert"]
+    sign_min = n_dec * MINUTES["signoff"]
+    rev_min = tot_min - alert_min - sign_min
+    print(f"{setup:28s}: total={tot_min:.1f} min/seed ({tot_min/60/(REPLAY_DAYS/7):.2f} h/wk) | "
+          f"alerts={n_alerts:.2f} ({alert_min:.1f}m) + signoffs={n_dec:.2f} ({sign_min:.1f}m) + reviews={rev_min:.1f}m")
 
-    File ~/miniconda3/envs/py312/lib/python3.12/site-packages/sklearn/utils/validation.py:3041, in validate_data(_estimator, X, y, reset, validate_separately, skip_check_array, **check_params)
-       3039         out = X, y
-       3040 elif not no_val_X and no_val_y:
-    -> 3041     out = check_array(X, input_name="X", **check_params)
-       3042 elif no_val_X and not no_val_y:
-       3043     out = _check_y(y, **check_params)
+# 2. Check missing hindsight decision in random review
+rnd_dec = events[(events["setup"] == "gated + random review") & events["event"].isin(["promote", "reject"])]
+print("\nRandom review decisions without hindsight label:")
+print(rnd_dec[rnd_dec["correct"].isna()][["seed", "day", "event", "reason"]])
 
+# 3. Abnormal-day quarantine recall & false-quarantine days + s_only / buffer_only per-seed check
+abn_day_set = set(np.flatnonzero(day_abnormal))
+norm_day_set = set(range(REPLAY_DAYS)) - abn_day_set
 
-    File ~/miniconda3/envs/py312/lib/python3.12/site-packages/sklearn/utils/validation.py:1090, in check_array(array, accept_sparse, accept_large_sparse, dtype, order, copy, force_writeable, ensure_all_finite, ensure_non_negative, ensure_2d, allow_nd, ensure_min_samples, ensure_min_features, estimator, input_name)
-       1084     raise ValueError(
-       1085         f"Found array with dim {array.ndim},"
-       1086         f" while dim <= 2 is required{context}."
-       1087     )
-       1089 if ensure_all_finite:
-    -> 1090     _assert_all_finite(
-       1091         array,
-       1092         input_name=input_name,
-       1093         estimator_name=estimator_name,
-       1094         allow_nan=ensure_all_finite == "allow-nan",
-       1095     )
-       1097 if copy:
-       1098     if _is_numpy_namespace(xp):
-       1099         # only make a copy if `array` and `array_orig` may share memory`
+def trace_quarantine(mode, seed):
+    rng = np.random.default_rng(1000 * seed + 17)
+    review = "all" if mode in ("review_all", "review_all_day") else mode
+    champ, n_versions = start_models[seed], 1
+    quarantine = np.zeros(T, bool)
+    log, evs, psi_flags = [], [], []
+    cal_day, cooldown, shadow = 0, 0, None
 
+    def new_challenger(day, reason):
+        nonlocal n_versions
+        use_q = quarantine if mode in ("random", "disagreement", "review_all", "review_all_day", "buffer_only") else None
+        model = train(ONSET + (day + 1) * DAY, seed * 1000 + day + 1, use_q)
+        v = make_version(model, f"v{n_versions}", day + 1, reason)
+        n_versions += 1
+        return v
 
-    File ~/miniconda3/envs/py312/lib/python3.12/site-packages/sklearn/utils/validation.py:137, in _assert_all_finite(X, allow_nan, msg_dtype, estimator_name, input_name)
-        134 if first_pass_isfinite:
-        135     return
-    --> 137 _assert_all_finite_element_wise(
-        138     X,
-        139     xp=xp,
-        140     allow_nan=allow_nan,
-        141     msg_dtype=msg_dtype,
-        142     estimator_name=estimator_name,
-        143     input_name=input_name,
-        144 )
+    for day in range(REPLAY_DAYS):
+        rows = day_rows[day]
+        y = RY[rows]
+        log.append({"seed": seed, "day": day, "version": champ["id"], "n": y.size,
+                    "err": float(np.abs(y - champ["point"][rows]).sum()),
+                    "cov": float(((y >= champ["lo"][rows] - champ["q"]) & (y <= champ["hi"][rows] + champ["q"])).sum()),
+                    "naive": float(np.abs(y - NAIVE[rows]).sum())})
+        mae7, cov7, naive7, _ = rolling(log, champ["id"], len(log) - 1)
+        if day - cal_day >= 7 and not (COVERAGE_BAND[0] <= cov7 <= COVERAGE_BAND[1]):
+            recent = np.concatenate([day_rows[k] for k in range(max(0, day - 6), day + 1)])
+            champ = {**champ, "q": cqr_offset(RY[recent], champ["lo"][recent], champ["hi"][recent])}
+            cal_day = day
 
+        reasons = []
+        if shadow is None and day >= cooldown:
+            hist = [rolling(log, champ["id"], len(log) - 1 - k) for k in range(STREAK)]
+            if all(h[3] >= 3 and h[0] > DEGRADE * champ["ref"] for h in hist):
+                reasons.append("degradation")
+            if all(h[3] >= 3 and h[0] > NAIVE_SLO * h[2] for h in hist):
+                reasons.append("accuracy SLO")
+            if day - cal_day >= 14 and not (COVERAGE_BAND[0] <= cov7 <= COVERAGE_BAND[1]):
+                reasons.append("coverage")
+            if (day + 1) % 7 == 0:
+                ref = drifted[champ["buffer"][0]:champ["buffer"][1]]
+                cur = drifted[ONSET + (day - 6) * DAY:ONSET + (day + 1) * DAY]
+                psi_flags.append(psi(ref[~np.isnan(ref)], cur) > PSI_ALERT)
+                if len(psi_flags) >= 2 and psi_flags[-1] and psi_flags[-2]:
+                    reasons.append("data drift")
+            if day + 1 - champ["day"] >= MAX_AGE_DAYS:
+                reasons.append("age")
 
-    File ~/miniconda3/envs/py312/lib/python3.12/site-packages/sklearn/utils/validation.py:186, in _assert_all_finite_element_wise(X, xp, allow_nan, msg_dtype, estimator_name, input_name)
-        169 if estimator_name and input_name == "X" and has_nan_error:
-        170     # Improve the error message on how to handle missing values in
-        171     # scikit-learn.
-        172     msg_err += (
-        173         f"\n{estimator_name} does not accept missing values"
-        174         " encoded as NaN natively. For supervised learning, you might want"
-       (...)    184         "#estimators-that-handle-nan-values"
-        185     )
-    --> 186 raise ValueError(msg_err)
+        if reasons:
+            if set(reasons) <= {"degradation", "accuracy SLO"}:
+                days7 = range(max(0, day - 6), day + 1)
+                bad = {k for k in days7 if day_abnormal[k] ^ (rng.random() < ERROR_RATE)}
+                m, _, nv, nd = rolling(log, champ["id"], len(log) - 1, skip_days=bad)
+                if nd == 0 or (m <= DEGRADE * champ["ref"] and m <= NAIVE_SLO * nv):
+                    cooldown = day + 3
+                    reasons = []
+            if reasons:
+                chal = new_challenger(day, "+".join(reasons))
+                shadow = {"v": chal, "start": day + 1, "rows": [], "tagged": []}
+                continue
 
+        if shadow is not None and day >= shadow["start"]:
+            chal = shadow["v"]
+            shadow["rows"].extend(rows)
+            picked = pick_reviews(review, rows, champ, chal, rng)
+            tags = operator_says_abnormal(picked, rng)
+            if mode == "review_all":
+                for i, tag in zip(picked, tags):
+                    if tag:
+                        shadow["tagged"].append(i)
+                        quarantine[replay_o[i]:replay_o[i] + H] = True
+            elif mode == "review_all_day":
+                if tags.mean() > 0.5:
+                    d_rows = day_rows[day]
+                    shadow["tagged"].extend(d_rows.tolist())
+                    quarantine[replay_o[d_rows[0]]:replay_o[d_rows[-1]] + H] = True
+            else:
+                for i, tag in zip(picked, tags):
+                    if tag:
+                        d_rows = day_rows[day_of[i]]
+                        if mode != "buffer_only":
+                            shadow["tagged"].extend(d_rows.tolist())
+                        if mode != "s_only":
+                            quarantine[replay_o[d_rows[0]]:replay_o[d_rows[-1]] + H] = True
 
-    ValueError: Input X contains NaN.
-    Ridge does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to preprocess the data, for instance by using an imputer transformer in a pipeline or drop samples with missing values. See https://scikit-learn.org/stable/modules/impute.html You can find a list of all estimators that handle NaN values at the following page: https://scikit-learn.org/stable/modules/impute.html#estimators-that-handle-nan-values
+            if day == shadow["start"] + SHADOW_DAYS - 1:
+                S = np.setdiff1d(np.asarray(shadow["rows"]), np.asarray(shadow["tagged"], dtype=int))
+                a, b = stats(champ, S), stats(chal, S)
+                promote = b["mae"] <= MARGIN * a["mae"]
+                if promote:
+                    chal = {**chal, "q": cqr_offset(RY[S], chal["lo"][S], chal["hi"][S])}
+                future = np.flatnonzero((day_of > day) & (day_of <= day + 28) & ~win_abnormal)
+                hindsight = bool(stats(chal, future)["mae"] < stats(champ, future)["mae"]) if len(future) >= 3 * DAY else None
+                evs.append({"seed": seed, "day": day, "event": "promote" if promote else "reject",
+                            "correct": None if hindsight is None else promote == hindsight})
+                if promote:
+                    champ, cal_day = chal, day + 1
+                    psi_flags.clear()
+                cooldown, shadow = day + 1 + COOLDOWN_DAYS, None
+
+    q_days = {k for k in range(REPLAY_DAYS) if quarantine[replay_o[day_rows[k][0]]:replay_o[day_rows[k][-1]] + H].mean() > 0.5}
+    abn_rec = len(q_days & abn_day_set) / len(abn_day_set)
+    false_q_days = len(q_days & norm_day_set)
+    ev_df = pd.DataFrame(evs)
+    valid_c = ev_df["correct"].dropna().astype(bool)
+    return {"mode": mode, "seed": seed, "abn_day_recall": abn_rec, "false_q_days": false_q_days,
+            "right": int(valid_c.sum()), "total_hindsight": len(valid_c)}
+
+modes = ["random", "disagreement", "review_all", "review_all_day", "s_only", "buffer_only"]
+q_res = pd.DataFrame(Parallel(n_jobs=min(18, n_jobs))(delayed(trace_quarantine)(m, s) for m in modes for s in SEEDS))
+print("\nQuarantine day-level recall and decision check across 3 seeds:")
+print(q_res.groupby("mode").agg(
+    abn_day_recall=("abn_day_recall", lambda s: f"{s.mean():.1%} +- {s.std():.1%}"),
+    false_q_days=("false_q_days", lambda s: f"{s.mean():.2f} / {len(norm_day_set)}"),
+    right=("right", "sum"),
+    total=("total_hindsight", "sum")
+))
+```
+
+    gated + random review       : total=476.0 min/seed (0.44 h/wk) | alerts=6.00 (60.0m) + signoffs=8.00 (80.0m) + reviews=336.0m
+    gated + disagreement review : total=458.7 min/seed (0.42 h/wk) | alerts=6.00 (60.0m) + signoffs=7.67 (76.7m) + reviews=322.0m
+    gated + review all          : total=14917.3 min/seed (13.70 h/wk) | alerts=6.00 (60.0m) + signoffs=7.33 (73.3m) + reviews=14784.0m
+    
+    Random review decisions without hindsight label:
+        seed  day    event      reason
+    76     0  125  promote  data drift
+    
+    Quarantine day-level recall and decision check across 3 seeds:
+                   abn_day_recall false_q_days  right  total
+    mode                                                    
+    buffer_only     53.3% +- 2.9%   6.67 / 107     15     21
+    disagreement    48.3% +- 2.9%   6.33 / 107     20     23
+    random          51.7% +- 2.9%   5.33 / 107     17     23
+    review_all      53.3% +- 2.9%  23.67 / 107     17     22
+    review_all_day  46.7% +- 2.9%   0.00 / 107     14     22
+    s_only           0.0% +- 0.0%   0.00 / 107     13     21
 
 
 ## 12. Summary
